@@ -1,0 +1,27 @@
+{
+  "rules": {
+    ".read": true,
+    ".write": "auth != null && auth.uid === 'ADMIN_UID_SHU_YERGA'",
+    "meta": {
+      "turn": {
+        ".write": "root.child('meta/is_draft_open').val() === true && newData.isNumber() && newData.val() === (data.exists() ? data.val() : 0) + 1"
+      },
+      "is_draft_open": {
+        ".write": "data.val() === true && newData.val() === false"
+      }
+    },
+    "players": {
+      "$pid": {
+        ".write": "(!data.exists() && root.child('meta/is_draft_open').val() === true && newData.child('name').isString() && newData.child('name').val().length >= 2 && newData.child('name').val().length <= 30 && !newData.child('group').exists() && !newData.child('base_ovr').exists() && newData.child('number').isNumber() && newData.child('number').val() >= 1 && newData.child('number').val() <= 99 && newData.child('pos').isString() && newData.child('pos').val().matches(/^(GK|DF|MF|FW)$/) && newData.child('country').isString() && newData.child('country').val().length <= 30) || (data.exists() && root.child('meta/is_draft_open').val() === true && !data.child('group').exists() && newData.child('group').isNumber() && newData.child('name').val() === data.child('name').val() && newData.child('number').val() === data.child('number').val() && newData.child('pos').val() === data.child('pos').val() && newData.child('country').val() === data.child('country').val() && newData.child('base_ovr').val() === data.child('base_ovr').val())"
+      }
+    },
+    "lineups": {
+      "$mid": {
+        "$gid": {
+          ".write": "root.child('meta/is_draft_open').val() === false && root.child('matches').child($mid).child('lineup_locked').val() !== true && !root.child('matches').child($mid).child('hs').exists()",
+          ".validate": "newData.hasChildren(['0','1','2','3','4','5']) && !newData.child('6').exists()"
+        }
+      }
+    }
+  }
+}
