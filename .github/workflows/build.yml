@@ -1,0 +1,27 @@
+# Joylashuvi: .github/workflows/build.yml
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Buildozer bilan APK qurish
+        id: buildozer
+        uses: ArtemSBulgakov/buildozer-action@v1
+        with:
+          command: buildozer android debug
+          buildozer_version: stable
+
+      - name: APK ni yuklab olish uchun saqlash
+        uses: actions/upload-artifact@v4
+        with:
+          name: apex-tournament-apk
+          path: ${{ steps.buildozer.outputs.filename }}
