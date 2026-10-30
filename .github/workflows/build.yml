@@ -26,7 +26,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git zip unzip autoconf automake libtool \
             pkg-config zlib1g-dev libncurses-dev cmake libffi-dev libssl-dev \
-            build-essential ccache
+            build-essential ccache libltdl-dev libtool-bin gettext
 
       - name: Buildozer o'rnatish
         run: |
@@ -42,7 +42,18 @@ jobs:
           key: buildozer-${{ hashFiles('buildozer.spec') }}
 
       - name: APK qurish
-        run: buildozer -v android debug
+        shell: bash
+        run: buildozer -v android debug 2>&1 | tee build.log
+
+      - name: Xato sababi (faqat xato bo'lsa)
+        if: failure()
+        shell: bash
+        run: |
+          N=$(grep -n "Command failed" build.log | head -1 | cut -d: -f1)
+          echo "=== 'Command failed' qatori: $N ==="
+          sed -n "$((N-80)),$((N-1))p" build.log
+          echo "=== 'rror' so'zi bor qatorlar (oxirgi 25 ta) ==="
+          grep -n -i "error\|exception\|not found" build.log | tail -25
 
       - name: APK ni saqlash
         uses: actions/upload-artifact@v4
