@@ -9,6 +9,9 @@ version = 1.0
 # KivyMD 1.1.1 + Kivy 2.2.1 barqaror kombinatsiya
 requirements = python3,kivy==2.2.1,kivymd==1.1.1,pillow
 
+# Barqaror python-for-android versiyasi (master Python 3.14 ishlatadi va Kivy 2.2.1 bilan mos emas)
+p4a.branch = v2024.01.21
+
 orientation = portrait
 fullscreen = 0
 
