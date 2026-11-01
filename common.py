@@ -5,11 +5,15 @@ Ma'lumotlar Firebase Realtime Database da saqlanadi (cloud.py), ikkala ilova bir
 bazani ko'radi. O'zgartirishlar faqat admin ilovasida (Firebase Auth + qoidalar).
 """
 import os
+import io
 import json
+import time
+import base64
 import hashlib
 import itertools
 import threading
 import traceback
+import urllib.request
 
 from kivy.base import ExceptionHandler, ExceptionManager
 from kivy.clock import Clock
@@ -40,12 +44,25 @@ from kivymd.uix.bottomnavigation import MDBottomNavigation, MDBottomNavigationIt
 from kivymd.uix.card import MDCard
 
 import config
-from cloud import Firebase, RemoteStore, CloudError
+from cloud import Firebase, RemoteStore, CloudError, TOKEN_START
 
 LINEUP_SIZE = 6
 
 # Ball tizimi
 POINTS = {"goal": 3, "assist": 2, "win": 3, "yellow": -1, "red": -3}
+
+# APEX TOKEN jarimalari (kod, nom, nechta token ketadi)
+PENALTIES = [("late", "O'yinga kech qolish", 100),
+             ("absent_bench", "O'yinga kelmaslik (zaxirada)", 200),
+             ("absent_start", "O'yinga kelmaslik (asosiy tarkibda)", 300)]
+PENALTY_BY_CODE = {c: v for c, _, v in PENALTIES}
+PENALTY_NAMES = {c: n for c, n, _ in PENALTIES}
+RED_PENALTY = 50                 # qizil kartochka uchun avtomatik jarima
+TEAM_WIN_TOKENS = 200            # liga/final g'olibi jamoasiga APEX PRO TOKEN
+OVR_DECAY_DAYS = 2               # token 0 bo'lsa: har shuncha kunda OVR -1
+VERSION_CODE = 2                 # ilova versiyasi (version.json bilan solishtiriladi)
+UPDATE_URL = getattr(config, "UPDATE_URL",
+                     "https://raw.githubusercontent.com/pythondevoloper/Apex-Tourement/main/version.json")
 
 # O'yinchi kartochkasi
 POSITIONS = [("Darvozabon", "GK"), ("Himoyachi", "DF"),
@@ -158,6 +175,107 @@ def logo_path(n):
 
 def hash_pw(password, salt):
     return hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
+
+
+def now_ts():
+    return int(time.time())
+
+
+# --------------------------------------------------------------------------
+#  Rasmlar: telefondan yuklash va bazada base64 ko'rinishida saqlash
+# --------------------------------------------------------------------------
+def image_to_b64(path, size=96):
+    """Rasmni kichraytirib JPEG base64 ga o'giradi (Firebase uchun yengil)."""
+    from PIL import Image as PILImage
+    with PILImage.open(path) as im:
+        im = im.convert("RGB")
+        im.thumbnail((size, size))
+        buf = io.BytesIO()
+        im.save(buf, format="JPEG", quality=72)
+    return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+def b64_to_path(key, b64):
+    """Base64 rasmni diskka yozib, yo'lini qaytaradi (Kivy Image uchun)."""
+    d = os.path.join(HERE, "uploads")
+    os.makedirs(d, exist_ok=True)
+    p = os.path.join(d, key + ".jpg")
+    data = base64.b64decode(b64)
+    old = None
+    if os.path.exists(p):
+        with open(p, "rb") as f:
+            old = f.read()
+    if old != data:
+        with open(p, "wb") as f:
+            f.write(data)
+    return p
+
+
+def pick_image_file(callback):
+    """callback(yo'l) ni tanlangan rasm fayli bilan chaqiradi. Android: fayl tanlagich, desktop: tkinter."""
+    try:
+        from jnius import autoclass
+        from android import activity
+        Intent = autoclass("android.content.Intent")
+
+        def on_result(request_code, result_code, intent):
+            try:
+                activity.unbind(on_activity_result=on_result)
+            except Exception:
+                pass
+            if result_code != -1 or intent is None or intent.getData() is None:
+                return
+            resolver = autoclass("org.kivy.android.PythonActivity").mActivity.getContentResolver()
+            stream = resolver.openInputStream(intent.getData())
+            buf = io.BytesIO()
+            while True:
+                chunk = stream.read(65536)
+                if not chunk:
+                    break
+                buf.write(bytes(chunk))
+            stream.close()
+            d = os.path.join(HERE, "uploads")
+            os.makedirs(d, exist_ok=True)
+            p = os.path.join(d, "pick_tmp.jpg")
+            with open(p, "wb") as f:
+                f.write(buf.getvalue())
+            callback(p)
+        activity.bind(on_activity_result=on_result)
+        intent = Intent(Intent.ACTION_GET_CONTENT)
+        intent.setType("image/*")
+        activity.startActivityForResult(intent)
+        return
+    except Exception:
+        pass
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        p = filedialog.askopenfilename(filetypes=[("Rasm", "*.png *.jpg *.jpeg")])
+        root.destroy()
+        if p:
+            callback(p)
+    except Exception:
+        toast("Rasm tanlab bo'lmadi")
+
+
+def open_url(url):
+    try:
+        from jnius import autoclass
+        from android import activity
+        Intent = autoclass("android.content.Intent")
+        Uri = autoclass("android.net.Uri")
+        i = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        activity.startActivity(i)
+        return
+    except Exception:
+        pass
+    try:
+        import webbrowser
+        webbrowser.open(url)
+    except Exception:
+        pass
 
 
 # --------------------------------------------------------------------------
@@ -374,6 +492,7 @@ class StatusScreen(MDScreen):
 class LeagueApp(MDApp):
     dialog = None
     ADMIN_APP = False                  # AdminApp da True
+    REFEREE_APP = False                # RefereeApp da True
     APP_TITLE = "Apex Tournament"
     TOOLBAR_NAME = "Apex Pro League"
     CACHE_NAME = "apex_cache.json"
@@ -463,7 +582,40 @@ class LeagueApp(MDApp):
         self.sm.current = self.first_screen()
         Clock.schedule_once(lambda dt: self.start_sync(), 0.3)
         Clock.schedule_interval(self.poll, getattr(config, "POLL_SECONDS", 6))
+        self.check_update()
         return self.sm
+
+    # ---------------- ilova yangilanishini tekshirish ----------------
+    def check_update(self, *a):
+        def work():
+            try:
+                with urllib.request.urlopen(UPDATE_URL, timeout=8) as r:
+                    info = json.loads(r.read().decode("utf-8"))
+            except Exception:
+                return
+            Clock.schedule_once(lambda dt: self._update_info(info), 0)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _update_info(self, info):
+        try:
+            ver = int(info.get("version", 0))
+        except (TypeError, ValueError):
+            return
+        if ver <= VERSION_CODE:
+            return
+        me = self.load_me()
+        if me.get("seen_update") == ver:
+            return
+        me["seen_update"] = ver
+        self._save_me(me)
+        buttons = [MDFlatButton(text="Keyinroq", on_release=self.close_dialog),
+                   MDRaisedButton(text="Yuklab olish",
+                                  on_release=lambda *a: (self.close_dialog(),
+                                                         open_url(info.get("url") or UPDATE_URL)))]
+        self.show_dialog(f"Yangi versiya mavjud (v{ver})",
+                         text=(info.get("note") or "Ilova yangilandi.")
+                              + "\n\nBarcha ma'lumotlaringiz (bazada) saqlanib qoladi.",
+                         buttons=buttons)
 
     # --- ilovaga xos qismlar (AdminApp o'zgartiradi) ---
     def build_extra_screens(self):
@@ -550,6 +702,10 @@ class LeagueApp(MDApp):
         self.toolbar.title = (self.TOOLBAR_NAME + " | Draft: "
                               + ("OCHIQ" if self.d["is_draft_open"] else "YOPIQ")
                               + ("" if self.store.online else " | OFLAYN"))
+        bell = "bell-badge-outline" if self.unread_notifs() else "bell-outline"
+        self.toolbar.right_action_items = [
+            [bell, lambda x: self.show_notifs()],
+            ["account-circle-outline", lambda x: self.profile_dialog()]]
 
     # ---------------- UI qurish ----------------
     def build_main(self):
@@ -557,7 +713,10 @@ class LeagueApp(MDApp):
         root = MDBoxLayout(orientation="vertical")
         self.toolbar = MDTopAppBar(title="Apex Pro League", elevation=2, md_bg_color=BLUE,
                                    specific_text_color=GOLD,
-                                   left_action_items=[["trophy", lambda x: None]])
+                                   left_action_items=[["trophy", lambda x: None]],
+                                   right_action_items=[
+                                       ["bell-outline", lambda x: self.show_notifs()],
+                                       ["account-circle-outline", lambda x: self.profile_dialog()]])
         root.add_widget(self.toolbar)
         nav = MDBottomNavigation()
         # Ranglar yaratilgandan KEYIN beriladi (konstruktorda bersak KivyMD yiqiladi)
@@ -569,6 +728,9 @@ class LeagueApp(MDApp):
         self.t_lineup, self.b_lineup = self.make_tab("lineup", "Bayonnoma", "soccer-field")
         self.t_table, self.b_table = self.make_tab("table", "Jadval", "trophy")
         tabs = [self.t_draft, self.t_groups, self.t_lineup, self.t_table]
+        if not self.REFEREE_APP:
+            self.t_market, self.b_market = self.make_tab("market", "Market", "storefront")
+            tabs.append(self.t_market)
         if self.ADMIN_APP:
             self.t_admin, self.b_admin = self.make_tab("admin", "Admin", "shield-account")
             tabs.append(self.t_admin)
@@ -605,11 +767,13 @@ class LeagueApp(MDApp):
         card.add_widget(col)
         return card
 
-    def band(self, text, color, text_color=(1, 1, 1, 1), h=44, logo=None):
+    def band(self, text, color, text_color=(1, 1, 1, 1), h=44, logo=None, group=None):
         """Rangli sarlavha tasmasi (ixtiyoriy logo bilan)."""
         card = MDCard(size_hint_y=None, height=dp(h), padding=(dp(12), dp(4)), radius=[10],
                       md_bg_color=color, spacing=dp(8))
-        if logo is not None:
+        if group is not None:
+            card.add_widget(Image(source=self.logo_source(group), size_hint_x=None, width=dp(36)))
+        elif logo is not None:
             card.add_widget(Image(source=logo_path(logo), size_hint_x=None, width=dp(36)))
         card.add_widget(MDLabel(text=text, markup=True, theme_text_color="Custom",
                                 text_color=text_color))
@@ -736,6 +900,10 @@ class LeagueApp(MDApp):
     def valid_pin(pin):
         return pin.isdigit() and len(pin) >= 4
 
+    @staticmethod
+    def ref_hash(pin, rid):
+        return hash_pw("ref:" + pin, "r" + str(rid))
+
     # ---------------- kartochka holati (hisoblanadi) ----------------
     def card_status(self, pid, before_mid=None):
         """
@@ -780,6 +948,504 @@ class LeagueApp(MDApp):
                 for k in list(m["lineups"].keys()):
                     m["lineups"][k] = [x for x in m["lineups"][k] if x != pid]
 
+    # ---------------- shaxsiy identifikatsiya (qurilmada saqlanadi) ----------------
+    def _me_path(self):
+        return os.path.join(self.user_data_dir, "me.json")
+
+    def load_me(self):
+        try:
+            with open(self._me_path(), "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def _save_me(self, me):
+        try:
+            with open(self._me_path(), "w", encoding="utf-8") as f:
+                json.dump(me, f)
+        except Exception:
+            pass
+
+    def my_pid(self):
+        pid = self.load_me().get("pid")
+        return pid if self.player(pid) else None
+
+    def set_my_pid(self, pid):
+        me = self.load_me()
+        me["pid"] = pid
+        self._save_me(me)
+
+    def clear_me(self):
+        me = self.load_me()
+        me.pop("pid", None)
+        self._save_me(me)
+
+    my_cap_gid = None          # shu sessiyada PIN kiritib tasdiqlangan kapitan guruhi
+
+    def my_group(self):
+        pid = self.my_pid()
+        p = self.player(pid) if pid else None
+        return self.group(p["group"]) if p and p["group"] else None
+
+    def captain_groups(self):
+        """Men kapitan bo'lgan guruhlar: shaxsim kapitan bo'lsa yoki shu sessiyada PIN kiritilgan."""
+        gids = []
+        if self.my_cap_gid is not None:
+            gids.append(self.my_cap_gid)
+        pid = self.my_pid()
+        if pid:
+            gids += [g["id"] for g in self.d["groups"] if g["captain_id"] == pid]
+        return list(dict.fromkeys(gids))
+
+    def captain_auth(self, gid, cb):
+        def got_pin(pin):
+            if not self.check_pin(gid, pin):
+                return
+            self.my_cap_gid = gid
+            cb()
+        self.input_dialog("Kapitan PIN", "PIN", got_pin, password=True, digits=True)
+
+    def profile_dialog(self):
+        pid = self.my_pid()
+        if not pid:
+            def chosen(v):
+                self.set_my_pid(v)
+                toast("Profilingiz saqlandi")
+                self.update_toolbar()
+            self.choose_dialog("Profil: o'zingizni tanlang",
+                               [(p["name"], p["id"]) for p in self.d["players"]], chosen)
+            return
+        p = self.player(pid)
+        items = [OneLineListItem(text="Shaxsiy kartochkam",
+                                 on_release=lambda *a: (self.close_dialog(), self.player_card(pid))),
+                 OneLineListItem(text="O'zimni almashtirish",
+                                 on_release=lambda *a: (self.close_dialog(), self.clear_me(),
+                                                        self.update_toolbar()))]
+        g = self.my_group()
+        if g and g["captain_id"] == pid:
+            items.append(OneLineListItem(
+                text="Kapitan: transfer so'rovlari va muzokaralar",
+                on_release=lambda *a: (self.close_dialog(), self.captain_transfers())))
+            items.append(OneLineListItem(
+                text="Kapitan: Market",
+                on_release=lambda *a: (self.close_dialog(), self.market_dialog(g["id"]))))
+        self.show_dialog(f"Profil: {p['name']}  |  APEX TOKEN: {p.get('tokens', TOKEN_START)}",
+                         items=items)
+
+    # ---------------- xabarnomalar ----------------
+    def my_audiences(self):
+        out = ["all"]
+        pid = self.my_pid()
+        if pid:
+            out.append(f"p{pid}")
+        out += [f"g{gid}" for gid in self.captain_groups()]
+        return out
+
+    def notifs_for_me(self):
+        aud = set(self.my_audiences())
+        out = [n for n in self.d["notifs"] if n["to"] in aud]
+        out.sort(key=lambda n: -n["ts"])
+        return out
+
+    def unread_notifs(self):
+        aud = set(self.my_audiences())
+        return sum(1 for n in self.d["notifs"]
+                   if n["to"] in aud and not any(k in n["read"] for k in aud))
+
+    def push_notif(self, to, text):
+        self.d["notifs"].append({"id": self.store.new_id(), "to": to, "text": text,
+                                 "ts": now_ts(), "read": {}})
+
+    def show_notifs(self):
+        aud = set(self.my_audiences())
+        ns = self.notifs_for_me()
+        changed = False
+        for n in ns:
+            if n["to"] in aud and n["to"] not in n["read"]:
+                n["read"][n["to"]] = now_ts()
+                changed = True
+        if changed:
+            self.store.save()
+        if not ns:
+            self.show_dialog("Xabarnomalar", text="Hozircha xabarnomalar yo'q.")
+            return
+        items = [TwoLineListItem(
+            text=n["text"],
+            secondary_text=time.strftime("%d.%m.%Y %H:%M", time.localtime(n["ts"] or 0)),
+            disabled=True) for n in ns[:50]]
+        self.show_dialog("Xabarnomalar", items=items)
+
+    # ---------------- APEX TOKEN ----------------
+    def add_tokens(self, pid, delta, reason=""):
+        p = self.player(pid)
+        if not p:
+            return
+        p["tokens"] = max(0, int(p.get("tokens", TOKEN_START)) + delta)
+        if p["tokens"] <= 0:
+            if not p.get("token_zero_since"):
+                p["token_zero_since"] = now_ts()
+                self.push_notif(
+                    f"p{pid}", "APEX TOKEN 0 ga tushdi: asosiy tarkibga chiqish taqiqlandi va "
+                               "OVR har 2 kunda 1 ballga pasayadi.")
+        else:
+            p["token_zero_since"] = None
+        if reason:
+            self.push_notif(f"p{pid}", f"APEX TOKEN {delta:+d}: {reason}. Balans: {p['tokens']}")
+
+    def token_decay(self, p):
+        ts = p.get("token_zero_since")
+        if not ts:
+            return 0
+        return max(0, (now_ts() - int(ts)) // (OVR_DECAY_DAYS * 86400))
+
+    def token_banned(self, pid):
+        p = self.player(pid)
+        return bool(p) and int(p.get("tokens", TOKEN_START)) <= 0
+
+    def apply_penalty(self, pid, mid, code):
+        p, m = self.player(pid), self.match(mid)
+        if not p or not m or code not in PENALTY_BY_CODE:
+            return False
+        if any(a["pid"] == pid and a["kind"] == code for a in m["attendance"]):
+            toast("Bu jarima allaqachon belgilangan")
+            return False
+        m["attendance"].append({"pid": pid, "kind": code})
+        self.add_tokens(pid, -PENALTY_BY_CODE[code], PENALTY_NAMES[code])
+        return True
+
+    # ---------------- TRANSFER LIST va MUZOKARA ----------------
+    def transfer_find(self, tid):
+        return next((t for t in self.d["transfers"] if t["id"] == tid), None)
+
+    def transfer_of(self, pid, statuses=("listed", "offer")):
+        return next((t for t in self.d["transfers"]
+                     if t["pid"] == pid and t["status"] in statuses), None)
+
+    def transfer_request(self, pid):
+        p, g = self.player(pid), self.my_group()
+        if not p or not g or p["group"] != g["id"]:
+            toast("Faqat o'z jamoangiz uchun so'rov yuborishingiz mumkin (profilni tanlang)")
+            return
+        if p.get("tstatus"):
+            toast("So'rovingiz allaqachon yuborilgan")
+            return
+        self.d["transfers"].append({"id": self.store.new_id(), "pid": pid, "status": "pending",
+                                    "seller_gid": g["id"], "buyer_gid": None, "amount": 0,
+                                    "side": "seller", "ts": now_ts(), "msg": ""})
+        p["tstatus"] = "pending"
+        self.push_notif(f"p{pid}", "So'rovingiz qabul qilindi va tez orada ko'rib chiqiladi.")
+        self.push_notif(f"g{g['id']}",
+                        f"Sizning {p['name']} jamoadoshingiz transfer listga qo'shilish uchun so'rov yubordi.")
+        if self.store.save():
+            toast("So'rov kapitaningizga yuborildi")
+        self.refresh_all()
+
+    def transfer_decide(self, tid, accept):
+        t = self.transfer_find(tid)
+        p = self.player(t["pid"]) if t else None
+        if not t or not p or t["status"] != "pending":
+            return
+        if accept:
+            t["status"], t["side"] = "listed", "buyer"
+            p["tstatus"] = "listed"
+            self.push_notif(f"p{p['id']}",
+                            "Sizning transfer listga qo'shilish so'rovingiz qabul qilindi va "
+                            "siz transfer listga qo'shildingiz.")
+        else:
+            t["status"] = "rejected"
+            p["tstatus"] = None
+            self.push_notif(f"p{p['id']}", "Sizning transfer listga qo'shilish so'rovingiz rad etildi.")
+        self.store.save()
+        self.refresh_all()
+
+    def transfer_offer(self, pid, buyer_gid, amount):
+        p = self.player(pid)
+        g = self.group(buyer_gid)
+        if not p or not g or p.get("tstatus") != "listed":
+            toast("O'yinchi transfer listda emas")
+            return
+        try:
+            amount = int(amount)
+        except (TypeError, ValueError):
+            amount = 0
+        if amount <= 0:
+            toast("Taklif miqdorini (token) kiriting")
+            return
+        if g["ptokens"] < amount:
+            toast(f"Jamoangizda token yetarli emas (balans: {g['ptokens']})")
+            return
+        t = self.transfer_of(pid)
+        if t is None:
+            toast("Transfer yozuvi topilmadi")
+            return
+        t.update(status="offer", buyer_gid=buyer_gid, amount=amount, side="seller", ts=now_ts())
+        self.push_notif(f"g{t['seller_gid']}",
+                        f"Biz sizning {p['name']} jamoadoshingizni sotib olishga qaror qildik. "
+                        f"Taklif: {amount} APEX PRO TOKEN.")
+        self.push_notif(f"g{buyer_gid}", f"{p['name']} uchun {amount} token taklif yuborildi.")
+        self.store.save()
+        self.refresh_all()
+
+    def transfer_counter(self, tid, amount):
+        t = self.transfer_find(tid)
+        if not t or t["status"] != "offer":
+            return
+        try:
+            amount = int(amount)
+        except (TypeError, ValueError):
+            amount = 0
+        if amount <= 0:
+            toast("Miqdorni kiriting")
+            return
+        other = "buyer" if t["side"] == "seller" else "seller"
+        t.update(amount=amount, side=other, ts=now_ts())
+        gid = t["buyer_gid"] if other == "buyer" else t["seller_gid"]
+        self.push_notif(f"g{gid}", f"Muzokara: qarshi taklif {amount} APEX PRO TOKEN.")
+        self.store.save()
+        self.refresh_all()
+
+    def transfer_accept(self, tid):
+        t = self.transfer_find(tid)
+        if not t or t["status"] != "offer":
+            return
+        p, seller, buyer = self.player(t["pid"]), self.group(t["seller_gid"]), self.group(t["buyer_gid"])
+        if not p or not seller or not buyer:
+            return
+        amt = int(t["amount"])
+        if buyer["ptokens"] < amt:
+            toast(f"Xaridor jamoada token yetarli emas (balans: {buyer['ptokens']})")
+            return
+        buyer["ptokens"] -= amt
+        seller["ptokens"] += amt
+        self.purge_from_lineups(p["id"])
+        p["group"], p["tstatus"] = buyer["id"], None
+        t.update(status="done", ts=now_ts())
+        self.push_notif(f"p{p['id']}", f"Transfer yakunlandi: siz endi {buyer['name']} jamoasidasiz.")
+        self.push_notif(f"g{seller['id']}", f"{p['name']} transfer qilindi: +{amt} APEX PRO TOKEN.")
+        self.push_notif(f"g{buyer['id']}", f"{p['name']} jamoangizga qo'shildi: -{amt} APEX PRO TOKEN.")
+        self.store.save()
+        self.refresh_all()
+
+    def transfer_drop_offer(self, tid):
+        """Sotuvchi taklifni rad etadi yoki xaridor taklifni qaytarib oladi: o'yinchi listda qoladi."""
+        t = self.transfer_find(tid)
+        if not t or t["status"] != "offer":
+            return
+        gid = t["buyer_gid"] if t["side"] == "seller" else t["seller_gid"]
+        t.update(status="listed", buyer_gid=None, amount=0, side="buyer", ts=now_ts())
+        self.push_notif(f"g{gid}", "Muzokara bekor qilindi, o'yinchi transfer listda qoldi.")
+        self.store.save()
+        self.refresh_all()
+
+    def captain_transfers(self):
+        gids = self.captain_groups()
+        if not gids:
+            toast("Avval kapitan sifatida PIN kiriting (Bayonnoma -> kapitan amali)")
+            return
+        inner = MDBoxLayout(orientation="vertical", adaptive_height=True, spacing=dp(8),
+                            padding=dp(4))
+        pend = [t for t in self.d["transfers"] if t["status"] == "pending"
+                and t["seller_gid"] in gids]
+        inner.add_widget(self.header(f"[b]Ko'rib chiqish kutilayotgan so'rovlar: {len(pend)}[/b]"))
+        for t in pend:
+            row = MDBoxLayout(size_hint_y=None, height=dp(48), spacing=dp(8))
+            row.add_widget(MDLabel(text=self.pname(t["pid"]), size_hint_x=1))
+            row.add_widget(MDRaisedButton(text="Qabul",
+                                          on_release=lambda *a, tid=t["id"]: (
+                                              self.close_dialog(), self.transfer_decide(tid, True))))
+            row.add_widget(MDFlatButton(text="Rad",
+                                        on_release=lambda *a, tid=t["id"]: (
+                                            self.close_dialog(), self.transfer_decide(tid, False))))
+            inner.add_widget(row)
+        offs = [t for t in self.d["transfers"] if t["status"] == "offer"
+                and (t["seller_gid"] in gids or t["buyer_gid"] in gids)]
+        inner.add_widget(self.header(f"[b]Muzokaralar: {len(offs)}[/b]"))
+        for t in offs:
+            me = "seller" if t["seller_gid"] in gids else "buyer"
+            wait = "sizning navbatingiz" if t["side"] == me else "raqib javobini kutmoqda"
+            row = MDBoxLayout(size_hint_y=None, height=dp(48), spacing=dp(8))
+            row.add_widget(MDLabel(
+                text=f"{self.pname(t['pid'])}: {t['amount']} token ({wait})", size_hint_x=1))
+            row.add_widget(MDRaisedButton(text="Muzokara",
+                                          on_release=lambda *a, tid=t["id"]: (
+                                              self.close_dialog(), self.negotiate_dialog(tid))))
+            inner.add_widget(row)
+        listed = [p for p in self.d["players"] if p.get("tstatus") == "listed"]
+        inner.add_widget(self.header(f"[b]Transfer list: {len(listed)}[/b]"))
+        for p in listed:
+            row = MDBoxLayout(size_hint_y=None, height=dp(48), spacing=dp(8))
+            row.add_widget(MDLabel(
+                text=f"{p['name']} [{self.gname(p['group'])}]", size_hint_x=1))
+            row.add_widget(MDRaisedButton(text="Taklif",
+                                          on_release=lambda *a, pid=p["id"]: (
+                                              self.close_dialog(), self.offer_dialog(pid))))
+            inner.add_widget(row)
+        sv = ScrollView(size_hint_y=None, height=dp(440))
+        sv.add_widget(inner)
+        self.show_dialog("Transfer boshqaruvi (kapitan)", content=sv)
+
+    def offer_dialog(self, pid):
+        gids = [g for g in self.captain_groups()]
+        if not gids:
+            return
+        if len(gids) == 1:
+            gid = gids[0]
+        else:
+            self.choose_dialog("Qaysi jamoa nomidan?", [(self.gname(g), g) for g in gids],
+                               lambda g: self.offer_dialog_for(pid, g))
+            return
+        self.offer_dialog_for(pid, gid)
+
+    def offer_dialog_for(self, pid, gid):
+        g = self.group(gid)
+
+        def cb(txt):
+            self.transfer_offer(pid, gid, txt)
+        self.input_dialog(f"{self.pname(pid)} uchun taklif",
+                          f"APEX PRO TOKEN (balans: {g['ptokens']})", cb, digits=True)
+
+    def negotiate_dialog(self, tid):
+        t = self.transfer_find(tid)
+        if not t:
+            return
+        gids = self.captain_groups()
+        me = "seller" if t["seller_gid"] in gids else "buyer"
+        acting = t["side"] == me
+        inner = MDBoxLayout(orientation="vertical", adaptive_height=True, spacing=dp(8),
+                            padding=dp(4))
+        inner.add_widget(MDLabel(
+            text=f"[b]{self.pname(t['pid'])}[/b]\nSotuvchi: {self.gname(t['seller_gid'])}\n"
+                 f"Xaridor: {self.gname(t['buyer_gid'])}\nJoriy taklif: [b]{t['amount']}[/b] token\n"
+                 f"Rolingiz: {'sotuvchi' if me == 'seller' else 'xaridor'}"
+                 + ("" if acting else "\nHozir raqib javobini kutmoqda"),
+            markup=True, size_hint_y=None, height=dp(120)))
+        btns = MDBoxLayout(size_hint_y=None, height=dp(48), spacing=dp(8))
+        if acting:
+            btns.add_widget(MDRaisedButton(
+                text="Kelishdim (transfer)",
+                on_release=lambda *a: (self.close_dialog(), self.transfer_accept(tid))))
+            btns.add_widget(MDRaisedButton(
+                text="Qarshi taklif",
+                on_release=lambda *a: (self.close_dialog(), self.input_dialog(
+                    "Qarshi taklif", "APEX PRO TOKEN",
+                    lambda v: self.transfer_counter(tid, v), digits=True))))
+        btns.add_widget(MDFlatButton(
+            text="Bekor qilish",
+            on_release=lambda *a: (self.close_dialog(), self.transfer_drop_offer(tid))))
+        inner.add_widget(btns)
+        self.show_dialog("Muzokara", content=inner)
+
+    # ---------------- MARKET (kapitanlar) ----------------
+    def market_dialog(self, gid=None):
+        gids = [gid] if gid else self.captain_groups()
+        if not gids:
+            toast("Marketdan faqat jamoa kapitanlari foydalanadi (PIN kiriting)")
+            return
+        inner = MDBoxLayout(orientation="vertical", adaptive_height=True, spacing=dp(8),
+                            padding=dp(4))
+        for g in [self.group(g) for g in gids]:
+            if g:
+                inner.add_widget(self.band(
+                    f"[b]{g['name']}[/b]  |  APEX PRO TOKEN: [b]{g['ptokens']}[/b]", GOLD,
+                    text_color=NAVY))
+        items = [it for it in self.d["market"] if it["qty"] > 0]
+        if not items:
+            inner.add_widget(MDLabel(text="Hozircha sotuvda narsa yo'q.",
+                                     size_hint_y=None, height=dp(40)))
+        for it in items:
+            card = adaptive_card(orientation="horizontal", radius=[12], md_bg_color=CARD,
+                                 padding=dp(8), spacing=dp(8))
+            if it.get("img"):
+                card.add_widget(Image(source=b64_to_path(f"m{it['id']}", it["img"]),
+                                      size_hint_x=None, width=dp(64)))
+            col = MDBoxLayout(orientation="vertical", size_hint_x=1)
+            col.add_widget(MDLabel(text=f"[b]{it['name']}[/b]", markup=True))
+            col.add_widget(MDLabel(text=it.get("desc") or "", font_style="Caption"))
+            col.add_widget(MDLabel(text=f"Narx: [b]{it['price']}[/b] token   |   Qolgan: {it['qty']}",
+                                   markup=True, font_style="Caption"))
+            card.add_widget(col)
+            card.add_widget(MDRaisedButton(
+                text="Olish",
+                on_release=lambda *a, iid=it["id"]: self.market_buy_ask(iid, gids)))
+            inner.add_widget(card)
+        sv = ScrollView(size_hint_y=None, height=dp(440))
+        sv.add_widget(inner)
+        self.show_dialog("Market (APEX PRO TOKEN)", content=sv)
+
+    def market_buy_ask(self, item_id, gids):
+        if len(gids) == 1:
+            self.market_buy(item_id, gids[0])
+            return
+        self.choose_dialog("Qaysi jamoa hisobidan?", [(self.gname(g), g) for g in gids],
+                           lambda g: self.market_buy(item_id, g))
+
+    def market_buy(self, item_id, gid):
+        it = next((x for x in self.d["market"] if x["id"] == item_id), None)
+        g = self.group(gid)
+        if not it or not g:
+            return
+        if it["qty"] <= 0:
+            toast("Bu narsa tugagan")
+            return
+        if g["ptokens"] < it["price"]:
+            toast(f"Token yetarli emas (balans: {g['ptokens']}, narx: {it['price']})")
+            return
+        self.close_dialog()
+        g["ptokens"] -= it["price"]
+        it["qty"] -= 1
+        it.setdefault("sold", []).append(gid)
+        self.push_notif(f"g{gid}", f"Market: «{it['name']}» sotib olindi "
+                                   f"(-{it['price']} token). Balans: {g['ptokens']}")
+        if self.store.save():
+            toast("Sotib olindi")
+        self.refresh_all()
+
+    # ---------------- guruh logosi: preset yoki telefondan yuklangan ----------------
+    def logo_source(self, g):
+        if g and g.get("logo_img"):
+            try:
+                return b64_to_path(f"g{g['id']}", g["logo_img"])
+            except Exception:
+                pass
+        return logo_path(g.get("logo") if g else None)
+
+    def apply_logo(self, g, value):
+        """value: preset raqami yoki ("img", b64)."""
+        if isinstance(value, tuple):
+            g["logo_img"] = value[1]
+            g["logo"] = None
+        else:
+            g["logo"] = value
+            g["logo_img"] = None
+
+    def captain_logo_upload(self):
+        """Kapitan o'z guruhining logosini tanlaydi yoki telefondan yuklaydi."""
+        gids = self.captain_groups()
+        if not gids:
+            toast("Avval kapitan sifatida PIN kiriting")
+            self.choose_dialog("Qaysi guruh kapitani?",
+                               [(g["name"], g["id"]) for g in self.d["groups"]],
+                               lambda gid: self.captain_auth(gid, self.captain_logo_upload))
+            return
+        gid = gids[0] if len(gids) == 1 else None
+        if gid is None:
+            self.choose_dialog("Qaysi guruh?", [(self.gname(g), g) for g in gids],
+                               self._captain_logo_pick)
+            return
+        self._captain_logo_pick(gid)
+
+    def _captain_logo_pick(self, gid):
+        g = self.group(gid)
+        if not g:
+            return
+
+        def got(value):
+            self.apply_logo(g, value)
+            if self.store.save():
+                toast("Logo yangilandi")
+            self.refresh_all()
+        self.logo_picker(got)
+
     # ---------------- bayonnoma va statistika ----------------
     def team_starters(self, m, gid):
         return list(m["lineups"].get(str(gid), []))
@@ -798,6 +1464,62 @@ class LeagueApp(MDApp):
         m["hs"] = sum(1 for g in m["goals"] if g["team"] == m["home"])
         m["as"] = sum(1 for g in m["goals"] if g["team"] == m["away"])
         m["lineup_locked"] = True
+
+    # ---------------- gol kiritish (hakam va admin) ----------------
+    def goal_add(self):
+        opts = [(self.match_label(m), m["id"]) for m in self.d["matches"]]
+        if not opts:
+            toast("Avval o'yinlar yaratilsin")
+            return
+
+        def got_match(mid):
+            m = self.match(mid)
+            if not m:
+                return
+            topts = [(self.gname(m["home"]), m["home"]), (self.gname(m["away"]), m["away"])]
+
+            def got_team(gid):
+                field = self.team_appeared(m, gid)
+                if not field:
+                    toast("Avval bu jamoaning boshlang'ich 6 tarkibi kiritilsin")
+                    return
+                sopts = [(self.pname(pid), pid) for pid in field]
+
+                def got_scorer(sid):
+                    aopts = [("— Assist yo'q", None)] + \
+                            [(self.pname(pid), pid) for pid in field if pid != sid]
+
+                    def got_assist(aid):
+                        m["goals"].append({"scorer": sid, "assist": aid, "team": gid})
+                        self.recompute_score(m)
+                        self.store.save()
+                        self.refresh_all()
+                        toast(f"Gol! Hisob {m['hs']}:{m['as']}")
+                    self.choose_dialog("Assist bergan o'yinchi", aopts, got_assist)
+                self.choose_dialog("Golni urgan o'yinchi", sopts, got_scorer)
+            self.choose_dialog("Qaysi jamoa urdi?", topts, got_team)
+        self.choose_dialog("Qaysi o'yin?", opts, got_match)
+
+    def goal_remove(self):
+        opts = []
+        for m in self.d["matches"]:
+            for i, g in enumerate(m["goals"]):
+                ast = f", assist: {self.pname(g['assist'])}" if g.get("assist") else ""
+                opts.append((f"{self.pname(g['scorer'])}{ast} ({self.match_label(m)})", (m["id"], i)))
+        if not opts:
+            toast("O'chirish uchun gol yo'q")
+            return
+
+        def chosen(v):
+            mid, idx = v
+            m = self.match(mid)
+            if m and 0 <= idx < len(m["goals"]):
+                m["goals"].pop(idx)
+                self.recompute_score(m)
+                self.store.save()
+                self.refresh_all()
+                toast("Gol o'chirildi")
+        self.choose_dialog("Qaysi gol?", opts, chosen)
 
     def has_history(self, pid):
         for m in self.d["matches"]:
@@ -917,7 +1639,8 @@ class LeagueApp(MDApp):
         base = int((p or {}).get("base_ovr") or BASE_OVR)
         s = self.player_stats(pid)
         bonus = int(s["points"] / 3) + 2 * s["motm"]
-        return max(40, min(99, base + bonus)), base, bonus
+        decay = self.token_decay(p or {})
+        return max(40, min(99, base + bonus - decay)), base, bonus - decay
 
     @staticmethod
     def ovr_color(ovr):
@@ -959,7 +1682,7 @@ class LeagueApp(MDApp):
         self.input_dialog("Futbolka raqami", "Raqam (1-99)", got_number, digits=True)
 
     def logo_picker(self, callback):
-        """12 ta tayyor logodan birini tanlash. callback(logo_raqami)"""
+        """12 ta tayyor logodan biri yoki telefondan yuklangan rasm. callback(raqam | ("img", b64))"""
         rows = (LOGO_COUNT + 3) // 4
         grid = GridLayout(cols=4, spacing=dp(8), padding=dp(4), size_hint_y=None,
                           height=dp(rows * 72 + 8))
@@ -967,7 +1690,24 @@ class LeagueApp(MDApp):
             b = LogoButton(source=logo_path(n), size_hint_y=None, height=dp(64))
             b.bind(on_release=lambda *a, n=n: (self.close_dialog(), callback(n)))
             grid.add_widget(b)
-        self.show_dialog("Guruh logosini tanlang", content=grid)
+        box = MDBoxLayout(orientation="vertical", adaptive_height=True, spacing=dp(8))
+        box.add_widget(grid)
+        box.add_widget(MDRaisedButton(
+            text="Telefondan yuklash", size_hint_x=1,
+            on_release=lambda *a: self._upload_logo(callback)))
+        self.show_dialog("Guruh logosini tanlang", content=box)
+
+    def _upload_logo(self, callback):
+        def got(path):
+            try:
+                b64 = image_to_b64(path)
+            except Exception:
+                toast("Rasmni o'qib bo'lmadi")
+                return
+            self.close_dialog()
+            callback(("img", b64))
+        self.close_dialog()
+        pick_image_file(got)
 
     def player_card(self, pid):
         """O'yinchining shaxsiy kartochkasi."""
@@ -981,6 +1721,9 @@ class LeagueApp(MDApp):
         lines = [
             f"Guruh: [b]{self.gname(p['group']) if p['group'] else 'tanlanmagan'}[/b]{role}",
             f"OVR: boshlang'ich [b]{base}[/b] + natija [b]{bonus:+d}[/b] = [b]{ovr}[/b]",
+            f"APEX TOKEN: [b]{p.get('tokens', TOKEN_START)}[/b]"
+            + ("  [color=#c62828][b](0: tarkib taqiqlangan, OVR pasaymoqda)[/b][/color]"
+               if self.token_banned(p["id"]) else ""),
             f"O'ynagan o'yinlar: [b]{s['apps']}[/b]",
             f"   Asosiy tarkibda boshlagan: [b]{s['starts']}[/b]",
             f"   Zaxiradan tushgan (sub in): [b]{s['sub_in']}[/b]",
@@ -1021,7 +1764,7 @@ class LeagueApp(MDApp):
         head.add_widget(ov)
         head.add_widget(info)
         if g:
-            head.add_widget(Image(source=logo_path(g.get("logo")), size_hint_x=None, width=dp(64)))
+            head.add_widget(Image(source=self.logo_source(g), size_hint_x=None, width=dp(64)))
         inner = MDBoxLayout(orientation="vertical", adaptive_height=True, spacing=dp(6))
         inner.add_widget(head)
         gold = (0.78, 0.57, 0, 1)
@@ -1039,7 +1782,12 @@ class LeagueApp(MDApp):
             inner.add_widget(MDLabel(text=ln, markup=True, size_hint_y=None, height=dp(26)))
         sv = ScrollView(size_hint_y=None, height=dp(460))
         sv.add_widget(inner)
-        self.show_dialog(p["name"], content=sv)
+        buttons = [MDFlatButton(text="Yopish", on_release=self.close_dialog)]
+        if p["id"] == self.my_pid() and p["group"] and not p.get("tstatus"):
+            buttons.append(MDRaisedButton(
+                text="Transfer listga so'rov",
+                on_release=lambda *a: (self.close_dialog(), self.transfer_request(p["id"]))))
+        self.show_dialog(p["name"], content=sv, buttons=buttons)
 
     # --- umumiy statistika jadvali (G va A alohida ustunlarda) ---
     STAT_COLS = [0.07, 0.30, 0.08, 0.08, 0.08, 0.08, 0.08, 0.08, 0.15]
@@ -1084,6 +1832,8 @@ class LeagueApp(MDApp):
         self.refresh_groups()
         self.refresh_lineup()
         self.refresh_table()
+        if not self.REFEREE_APP:
+            self.refresh_market()
         if self.ADMIN_APP:
             self.refresh_admin()
 
@@ -1105,7 +1855,7 @@ class LeagueApp(MDApp):
             card.add_widget(MDLabel(text="O'zgartirish faqat Admin panelda mumkin."))
         box.add_widget(card)
 
-        if is_open and not self.ADMIN_APP:
+        if is_open and not self.ADMIN_APP and not self.REFEREE_APP:
             box.add_widget(MDRaisedButton(text="Ro'yxatdan o'tish (men o'ynayman)",
                                           size_hint_x=1,
                                           on_release=lambda *a: self.register_dialog()))
@@ -1115,7 +1865,7 @@ class LeagueApp(MDApp):
             box.add_widget(MDLabel(text="Hamma o'yinchilar guruhlarga taqsimlangan.",
                                    size_hint_y=None, height=dp(40)))
         for p in free:
-            pickable = is_open and not self.ADMIN_APP
+            pickable = is_open and not self.ADMIN_APP and not self.REFEREE_APP
             box.add_widget(TwoLineListItem(
                 text=p["name"], secondary_text=self.player_line(p),
                 on_release=(lambda x, pid=p["id"]: self.ask_pick(pid)) if pickable
@@ -1152,7 +1902,8 @@ class LeagueApp(MDApp):
             toast("Davlatni tanlang yoki yozing")
             return False
         p = {"id": self.store.new_id(), "name": name, "group": None, "self_registered": True,
-             "number": int(number), "pos": pos, "country": country}
+             "number": int(number), "pos": pos, "country": country,
+             "tokens": TOKEN_START, "token_zero_since": None}
         self.d["players"].append(p)
         ok = self.store.save()
         self.refresh_all()
@@ -1205,8 +1956,9 @@ class LeagueApp(MDApp):
             ms = self.members(g["id"])
             gi = self.d["groups"].index(g)
             box.add_widget(self.band(
-                f"[b]{g['name']}[/b]  (kapitan: {self.captain_name(g)}) - {len(ms)} ta",
-                GROUP_COLORS[gi % len(GROUP_COLORS)], logo=g.get("logo")))
+                f"[b]{g['name']}[/b]  (kapitan: {self.captain_name(g)}) - {len(ms)} ta | "
+                f"TOKEN: {g['ptokens']}",
+                GROUP_COLORS[gi % len(GROUP_COLORS)], group=g))
             for p in ms:
                 star = "  (K)" if self.is_captain(p["id"]) else ""
                 st = self.player_stats(p["id"])
@@ -1230,6 +1982,16 @@ class LeagueApp(MDApp):
             box.add_widget(MDRaisedButton(text="Kapitan: boshlang'ich 6 ni belgilash",
                                           size_hint_x=1,
                                           on_release=lambda *a: self.captain_lineup_start()))
+            box.add_widget(MDRaisedButton(text="Kapitan: guruh logosini yuklash",
+                                          size_hint_x=1,
+                                          on_release=lambda *a: self.captain_logo_upload()))
+        if self.REFEREE_APP:
+            box.add_widget(MDRaisedButton(text="Hakam: gol kiritish (muallif + assist)",
+                                          size_hint_x=1,
+                                          on_release=lambda *a: self.goal_add()))
+            box.add_widget(MDRaisedButton(text="Hakam: golni o'chirish",
+                                          size_hint_x=1,
+                                          on_release=lambda *a: self.goal_remove()))
         box.add_widget(self.note(
             "Tarkib draft yopilgandan so'ng, kapitan PIN kodi bilan kiritiladi. "
             "Sariq/qizil kartochkalarni faqat admin belgilaydi."))
@@ -1322,6 +2084,11 @@ class LeagueApp(MDApp):
                 items.append(OneLineListItem(text=f"{name} — jarimada (o'ynay olmaydi)",
                                              disabled=True))
                 continue
+            if self.token_banned(pid):
+                sel.discard(pid)
+                items.append(OneLineListItem(text=f"{name} — APEX TOKEN 0 (o'ynay olmaydi)",
+                                             disabled=True))
+                continue
             it = OneLineListItem(text=("[+] " if pid in sel else "[  ] ") + name)
 
             def toggle(item, pid=pid, name=name):
@@ -1364,6 +2131,9 @@ class LeagueApp(MDApp):
             if not p or p["group"] != gid:
                 toast("O'yinchi bu guruhga tegishli emas")
                 return False
+            if self.token_banned(pid):
+                toast(f"{p['name']} APEX TOKEN 0: asosiy tarkibga chiqolmaydi")
+                return False
             if self.card_status(pid, mid)[1]:
                 toast(f"{p['name']} jarimada")
                 return False
@@ -1375,11 +2145,73 @@ class LeagueApp(MDApp):
         return ok
 
     # ---------------- JADVAL oynasi ----------------
-    def standings(self):
-        rows = {g["id"]: dict(name=g["name"], P=0, W=0, D=0, L=0, GF=0, GA=0, PTS=0)
-                for g in self.d["groups"]}
+    def stage_groups(self):
+        """8 tadan ko'p jamoa bo'lsa guruh bosqichi: jamoalar ikki yarmga bo'linadi."""
+        gs = [g["id"] for g in self.d["groups"]]
+        if len(gs) <= 8:
+            return None
+        half = (len(gs) + 1) // 2
+        return [gs[:half], gs[half:]]
+
+    def planned_pairs(self, ids, double):
+        out = []
+        for a, b in itertools.combinations(ids, 2):
+            out.append((a, b))
+            if double:
+                out.append((b, a))
+        return out
+
+    def group_stage_complete(self):
+        if not self.d["groups"]:
+            return False
+        halves = self.stage_groups()
+        scopes = halves if halves else [[g["id"] for g in self.d["groups"]]]
+        for scope in scopes:
+            want = set(self.planned_pairs(scope, halves is None))
+            done = {(m["home"], m["away"]) for m in self.d["matches"]
+                    if m.get("stage", "group") == "group" and m["hs"] is not None
+                    and m["home"] in scope and m["away"] in scope}
+            if not want <= done:
+                return False
+        return True
+
+    def final_match(self):
+        return next((m for m in self.d["matches"] if m.get("stage") == "final"), None)
+
+    def final_candidates(self):
+        halves = self.stage_groups()
+        if halves:
+            out = []
+            for h in halves:
+                st = self.standings(grp=h)
+                if st:
+                    out.append(st[0]["gid"])
+            return out
+        st = self.standings()
+        return [r["gid"] for r in st[:2]]
+
+    def award_final(self, m):
+        """FINAL natijasi kiritilganda g'olib jamoaga APEX PRO TOKEN."""
+        if m.get("stage") != "final" or m["hs"] is None or m["hs"] == m["as"] or m.get("awarded"):
+            return
+        w = m["home"] if m["hs"] > m["as"] else m["away"]
+        g = self.group(w)
+        if not g:
+            return
+        m["awarded"] = True
+        g["ptokens"] = int(g.get("ptokens", 0)) + TEAM_WIN_TOKENS
+        self.push_notif(f"g{w}", f"Tabriklaymiz! {g['name']} g'olib bo'ldi: "
+                                 f"+{TEAM_WIN_TOKENS} APEX PRO TOKEN.")
+        self.push_notif("all", f"{g['name']} turnir g'olibi bo'ldi!")
+
+    def standings(self, grp=None, stage="group"):
+        ids = set(grp) if grp is not None else None
+        rows = {g["id"]: dict(gid=g["id"], name=g["name"], P=0, W=0, D=0, L=0, GF=0, GA=0, PTS=0)
+                for g in self.d["groups"] if ids is None or g["id"] in ids}
         for m in self.d["matches"]:
-            if m["hs"] is None or m["home"] not in rows or m["away"] not in rows:
+            if m.get("stage", "group") != stage or m["hs"] is None:
+                continue
+            if m["home"] not in rows or m["away"] not in rows:
                 continue
             h, a = rows[m["home"]], rows[m["away"]]
             h["P"] += 1; a["P"] += 1
@@ -1394,27 +2226,123 @@ class LeagueApp(MDApp):
         return sorted(rows.values(),
                       key=lambda r: (-r["PTS"], -(r["GF"] - r["GA"]), -r["GF"], r["name"]))
 
+    def _table_rows(self, box, rows, top_mark=1):
+        for i, r in enumerate(rows, 1):
+            box.add_widget(TwoLineListItem(
+                text=f"{i}. {r['name']} — {r['PTS']} ochko",
+                bg_color=(0.42, 0.33, 0.06, 1) if (i <= top_mark and r["PTS"] > 0) else CARD,
+                secondary_text=(f"O'yin {r['P']} | G {r['W']} D {r['D']} M {r['L']} | "
+                                f"To'plar {r['GF']}-{r['GA']}"),
+                disabled=True))
+
     def refresh_table(self):
         box = self.b_table
         box.clear_widgets()
         box.add_widget(self.hero("Turnir jadvali va statistika"))
-        box.add_widget(self.header("[b]Turnir jadvali[/b]"))
-        for i, r in enumerate(self.standings(), 1):
+        halves = self.stage_groups()
+        if halves:
+            for i, h in enumerate(halves, 1):
+                box.add_widget(self.header(f"[b]{i}-guruh jadvali (guruh bosqichi)[/b]"))
+                self._table_rows(box, self.standings(grp=h), top_mark=1)
+            box.add_widget(self.note("Har ikki guruh g'olibi FINAL da o'ynaydi.", 30))
+        else:
+            box.add_widget(self.header("[b]Turnir jadvali[/b]"))
+            self._table_rows(box, self.standings(), top_mark=2)
+        fin = self.final_match()
+        if fin:
+            box.add_widget(self.header("[b]FINAL[/b]"))
+            score = "—" if fin["hs"] is None else f"{fin['hs']} : {fin['as']}"
             box.add_widget(TwoLineListItem(
-                text=f"{i}. {r['name']} — {r['PTS']} ochko",
-                bg_color=(0.42, 0.33, 0.06, 1) if (i == 1 and r["PTS"] > 0) else CARD,
-                secondary_text=(f"O'yin {r['P']} | G {r['W']} D {r['D']} M {r['L']} | "
-                                f"To'plar {r['GF']}-{r['GA']}"),
-                disabled=True))
+                text=f"{self.gname(fin['home'])}  {score}  {self.gname(fin['away'])}",
+                secondary_text="Chempionlik o'yini", disabled=True))
+            if fin["hs"] is not None and fin["hs"] != fin["as"]:
+                w = fin["home"] if fin["hs"] > fin["as"] else fin["away"]
+                box.add_widget(self.band(f"[b]CHEMPION: {self.gname(w)}[/b]  "
+                                         f"(+{TEAM_WIN_TOKENS} APEX PRO TOKEN)",
+                                         GOLD, text_color=NAVY, group=self.group(w)))
+            box.add_widget(self.note("3-o'rin va undan past jamoalar musobaqani yakunlagan.", 30))
+        elif self.group_stage_complete():
+            c = self.final_candidates()
+            if len(c) == 2:
+                box.add_widget(self.band(
+                    f"[b]FINAL juftligi: {self.gname(c[0])} — {self.gname(c[1])}[/b]  "
+                    "(admin FINAL o'yinini yaratadi)", GOLD, text_color=NAVY))
+            rest = [r for r in self.standings() if not halves][2:] if not halves else []
+            if rest:
+                box.add_widget(self.note("3-o'rin va undan past jamoalar musobaqani yakunlagan.", 30))
         box.add_widget(self.header("[b]O'yinlar[/b]"))
         if not self.d["matches"]:
             box.add_widget(MDLabel(text="Hozircha o'yinlar yo'q.", size_hint_y=None, height=dp(40)))
         for m in self.d["matches"]:
             score = "—" if m["hs"] is None else f"{m['hs']} : {m['as']}"
+            tag = "  [FINAL]" if m.get("stage") == "final" else ""
             box.add_widget(OneLineListItem(
-                text=f"{self.gname(m['home'])}  {score}  {self.gname(m['away'])}",
+                text=f"{self.gname(m['home'])}  {score}  {self.gname(m['away'])}{tag}",
                 disabled=True))
         self.build_stats_table(box)
+
+    # ---------------- MARKET oynasi ----------------
+    def refresh_market(self):
+        box = self.b_market
+        box.clear_widgets()
+        box.add_widget(self.hero("Market — APEX PRO TOKEN"))
+        gids = self.captain_groups()
+        if gids:
+            for gid in gids:
+                g = self.group(gid)
+                if g:
+                    box.add_widget(self.band(
+                        f"[b]{g['name']}[/b]  |  balans: [b]{g['ptokens']}[/b] token",
+                        GOLD, text_color=NAVY, group=g))
+        else:
+            box.add_widget(self.note(
+                "Marketdan faqat jamoa kapitanlari foydalanadi. "
+                "Kapitan sifatida tasdiqlash uchun PIN kiriting.", 44))
+            box.add_widget(MDRaisedButton(
+                text="Kapitan PIN kirish", size_hint_x=1,
+                on_release=lambda *a: self.choose_dialog(
+                    "Qaysi guruh kapitani?", [(g["name"], g["id"]) for g in self.d["groups"]],
+                    lambda gid: self.captain_auth(gid, self.refresh_all))))
+        items = [it for it in self.d["market"] if it["qty"] > 0]
+        box.add_widget(self.header(f"[b]Sotuvda: {len(items)}[/b]"))
+        if not items:
+            box.add_widget(MDLabel(text="Hozircha sotuvda narsa yo'q. Admin qo'shadi.",
+                                   size_hint_y=None, height=dp(40)))
+        for it in items:
+            card = adaptive_card(orientation="horizontal", radius=[12], md_bg_color=CARD,
+                                 padding=dp(8), spacing=dp(8))
+            if it.get("img"):
+                card.add_widget(Image(source=b64_to_path(f"m{it['id']}", it["img"]),
+                                      size_hint_x=None, width=dp(72)))
+            col = MDBoxLayout(orientation="vertical", size_hint_x=1)
+            col.add_widget(MDLabel(text=f"[b]{it['name']}[/b]", markup=True))
+            if it.get("desc"):
+                col.add_widget(MDLabel(text=it["desc"], font_style="Caption"))
+            col.add_widget(MDLabel(text=f"Narx: [b]{it['price']}[/b] token  |  Qolgan: {it['qty']}",
+                                   markup=True, font_style="Caption"))
+            card.add_widget(col)
+            if gids:
+                card.add_widget(MDRaisedButton(
+                    text="Olish",
+                    on_release=lambda *a, iid=it["id"]: self.market_buy_ask(iid, gids)))
+            box.add_widget(card)
+        listed = [p for p in self.d["players"] if p.get("tstatus") == "listed"]
+        box.add_widget(self.header(f"[b]Transfer list: {len(listed)}[/b]"))
+        for p in listed:
+            t = self.transfer_of(p["id"])
+            sec = f"{self.player_line(p)} | jamoa: {self.gname(p['group'])}"
+            if t and t["status"] == "offer":
+                sec += f" | taklif: {t['amount']} token ({self.gname(t['buyer_gid'])})"
+            row = TwoLineListItem(text=p["name"], secondary_text=sec, disabled=True)
+            box.add_widget(row)
+            if gids:
+                box.add_widget(MDRaisedButton(
+                    text=f"{p['name']} uchun taklif yuborish", size_hint_x=1,
+                    on_release=lambda *a, pid=p["id"]: self.offer_dialog(pid)))
+        if gids:
+            box.add_widget(MDRaisedButton(
+                text="Transfer so'rovlarim va muzokaralar", size_hint_x=1,
+                on_release=lambda *a: self.captain_transfers()))
 
     # ---------------- ADMIN oynasi ----------------
 

@@ -27,7 +27,11 @@ except Exception:  # certifi yo'q bo'lsa tizim sertifikatlari
     _CTX = ssl.create_default_context()
 
 META_KEYS = ("setup_done", "is_draft_open", "turn")
-COLLECTIONS = ("groups", "players", "matches")
+COLLECTIONS = ("groups", "players", "matches", "notifs", "transfers", "market", "refs")
+EXTRA = ("notifs", "transfers", "market", "refs")
+
+# APEX TOKEN: har bir o'yinchi ro'yxatdan o'tganda shuncha token oladi
+TOKEN_START = 500
 
 
 class CloudError(Exception):
@@ -147,7 +151,8 @@ class Firebase:
 # --------------------------------------------------------------------------
 def empty_data():
     return {"setup_done": False, "is_draft_open": False, "turn": 0,
-            "groups": [], "players": [], "matches": []}
+            "groups": [], "players": [], "matches": [],
+            "notifs": [], "transfers": [], "market": [], "refs": []}
 
 
 def _clean(d, skip=()):
@@ -169,8 +174,9 @@ def to_remote(data):
         for gid, ids in m.get("lineups", {}).items():
             if ids:
                 lineups.setdefault(str(m["id"]), {})[str(gid)] = list(ids)
-    return {"meta": meta, "groups": groups, "players": players,
-            "matches": matches, "lineups": lineups}
+    return dict({"meta": meta, "groups": groups, "players": players,
+                 "matches": matches, "lineups": lineups},
+                **{c: {str(x["id"]): _clean(x) for x in data[c]} for c in EXTRA})
 
 
 def _values(node):
@@ -203,6 +209,9 @@ def _norm_ids(m):
     for c in m.get("cards", []):
         if "pid" in c:
             c["pid"] = _i(c["pid"])
+    for a in m.get("attendance", []):
+        if "pid" in a:
+            a["pid"] = _i(a["pid"])
 
 
 def from_remote(raw):
@@ -219,6 +228,8 @@ def from_remote(raw):
         g["captain_id"] = _i(g.get("captain_id"))
         g.setdefault("pin_hash", None)
         g["logo"] = _i(g.get("logo"))
+        g.setdefault("logo_img", None)
+        g["ptokens"] = int(g.get("ptokens", 0) or 0)
         data["groups"].append(g)
     for v in _values(raw.get("players")):
         p = dict(v)
@@ -229,6 +240,9 @@ def from_remote(raw):
             p.setdefault(k, None)
         p["number"] = _i(p["number"])
         p["base_ovr"] = _i(p["base_ovr"])
+        p["tokens"] = int(p.get("tokens", TOKEN_START) or 0)
+        p["token_zero_since"] = _i(p.get("token_zero_since"))
+        p.setdefault("tstatus", None)     # None | "pending" | "listed"
         data["players"].append(p)
     lin_all = raw.get("lineups") or {}
     for v in _values(raw.get("matches")):
@@ -238,6 +252,10 @@ def from_remote(raw):
         m.setdefault("as", None)
         m.setdefault("lineup_locked", False)
         m.setdefault("motm_admin", None)
+        m.setdefault("stage", "group")     # "group" | "final"
+        m["grp"] = _i(m.get("grp"))        # guruh bosqichidagi guruh id si (>8 jamoa)
+        if not isinstance(m.get("attendance"), list):
+            m["attendance"] = []
         for k in ("goals", "subs", "cards"):
             if not isinstance(m.get(k), list):
                 m[k] = []
@@ -247,6 +265,40 @@ def from_remote(raw):
         m["lineups"] = {str(k): [_i(v) for v in x] for k, x in lin.items() if isinstance(x, list)}
         _norm_ids(m)
         data["matches"].append(m)
+    for v in _values(raw.get("notifs")):
+        n = dict(v)
+        n["id"] = int(n["id"])
+        n.setdefault("to", "all")
+        n.setdefault("text", "")
+        n["ts"] = int(n.get("ts", 0) or 0)
+        n["read"] = n.get("read") if isinstance(n.get("read"), dict) else {}
+        data["notifs"].append(n)
+    for v in _values(raw.get("transfers")):
+        t = dict(v)
+        t["id"] = int(t["id"])
+        t["pid"] = _i(t.get("pid"))
+        t.setdefault("status", "pending")   # pending|listed|offer|done|rejected
+        t["seller_gid"] = _i(t.get("seller_gid"))
+        t["buyer_gid"] = _i(t.get("buyer_gid"))
+        t["amount"] = int(t.get("amount", 0) or 0)
+        t["ts"] = int(t.get("ts", 0) or 0)
+        t.setdefault("msg", "")
+        data["transfers"].append(t)
+    for v in _values(raw.get("market")):
+        it = dict(v)
+        it["id"] = int(it["id"])
+        it.setdefault("name", "")
+        it.setdefault("desc", "")
+        it["price"] = int(it.get("price", 0) or 0)
+        it["qty"] = int(it.get("qty", 0) or 0)
+        it.setdefault("img", None)
+        data["market"].append(it)
+    for v in _values(raw.get("refs")):
+        r = dict(v)
+        r["id"] = int(r["id"])
+        r.setdefault("name", "")
+        r.setdefault("pin_hash", None)
+        data["refs"].append(r)
     for c in COLLECTIONS:
         data[c].sort(key=lambda x: x["id"])
     return data

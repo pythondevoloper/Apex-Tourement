@@ -1,5 +1,6 @@
 # Joylashuvi: .github/workflows/build.yml
-# Ikkita APK quradi: o'yinchi ilovasi (player) va admin ilovasi (admin)
+# Uchta APK quradi: o'yinchi (player), admin (admin) va hakam (referee).
+# v* tegi bosilganda APK lar GitHub Release ga yuklanadi (ilova yangilanish xabari shu yerdan).
 name: Build APK
 
 on:
@@ -13,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [player, admin]
+        app: [player, admin, referee]
     steps:
       - uses: actions/checkout@v4
 
@@ -81,3 +82,20 @@ jobs:
         with:
           name: apex-${{ matrix.app }}-apk
           path: build_${{ matrix.app }}/bin/*.apk
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: apex-*-apk
+          merge-multiple: true
+          path: apks
+
+      - name: Release ga yuklash
+        uses: softprops/action-gh-release@v2
+        with:
+          files: apks/*.apk
+          generate_release_notes: true

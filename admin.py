@@ -4,137 +4,26 @@ from common import *
 
 
 class SetupScreen(MDScreen):
-    """Turnirni sozlash: 1/2 guruhlar soni, 2/2 guruhlar, kapitanlar, PIN, logo."""
+    """Turnirni boshlash. Guruhlar soni so'ralmaydi: guruhlar keyin, Admin paneldan qo'shiladi."""
 
     def __init__(self, **kw):
         super().__init__(**kw)
-        self.app = MDApp.get_running_app()
-        self.group_count = 4
-        self.names, self.caps, self.pins, self.logos = [], [], [], []
-        self.root_box = MDBoxLayout(orientation="vertical")
-        self.add_widget(self.root_box)
-        self.step1()
-
-    @staticmethod
-    def _bar(title, back=None):
-        bar = MDBoxLayout(size_hint_y=None, height=dp(56), md_bg_color=BLUE,
-                          padding=(dp(8), 0), spacing=dp(6))
-        if back:
-            bar.add_widget(MDIconButton(icon="arrow-left", theme_text_color="Custom",
-                                        text_color=GOLD, on_release=lambda *a: back()))
-        bar.add_widget(MDLabel(text=f"[b]{title}[/b]", markup=True, font_style="H6",
-                               theme_text_color="Custom", text_color=GOLD))
-        return bar
-
-    # ---- 1-qadam: guruhlar soni ----
-    def step1(self, *a):
-        b = self.root_box
-        b.clear_widgets()
-        b.add_widget(self._bar("Turnirni sozlash   1/2"))
-        body = MDBoxLayout(orientation="vertical", padding=dp(20), spacing=dp(14))
+        body = MDBoxLayout(orientation="vertical", padding=dp(24), spacing=dp(14))
+        body.add_widget(Widget())
         body.add_widget(Image(source=TROPHY, size_hint_y=None, height=dp(150)))
         body.add_widget(MDLabel(text="Apex Pro League", font_style="H4", halign="center",
                                 theme_text_color="Custom", text_color=GOLD,
                                 size_hint_y=None, height=dp(48)))
-        body.add_widget(MDLabel(text="Nechta guruh (jamoa) qatnashadi?", halign="center",
-                                size_hint_y=None, height=dp(28)))
-        row = MDBoxLayout(size_hint_y=None, height=dp(84), spacing=dp(12))
-        row.add_widget(Widget())
-        row.add_widget(MDIconButton(icon="minus-circle", icon_size="46sp",
-                                    theme_text_color="Custom", text_color=GOLD,
-                                    pos_hint={"center_y": 0.5}, on_release=lambda *a: self.change(-1)))
-        self.count_lbl = MDLabel(text=f"[b]{self.group_count}[/b]", markup=True, font_style="H2",
-                                 halign="center", size_hint_x=None, width=dp(90))
-        row.add_widget(self.count_lbl)
-        row.add_widget(MDIconButton(icon="plus-circle", icon_size="46sp",
-                                    theme_text_color="Custom", text_color=GOLD,
-                                    pos_hint={"center_y": 0.5}, on_release=lambda *a: self.change(1)))
-        row.add_widget(Widget())
-        body.add_widget(row)
-        body.add_widget(MDLabel(text="2 dan 8 gachasi mumkin", halign="center", font_style="Caption",
-                                theme_text_color="Secondary", size_hint_y=None, height=dp(24)))
+        body.add_widget(MDLabel(
+            text="Turnirni boshlaganingizdan so'ng o'yinchilar ro'yxatdan o'ta oladi.\n"
+                 "Guruhlar (jamoa) soni cheklanmagan: ularni Admin paneldan istalgan payt "
+                 "qo'shasiz, kapitanlar ro'yxatdan o'tgan o'yinchilar orasidan tanlanadi.",
+            halign="center", font_style="Caption", theme_text_color="Secondary",
+            size_hint_y=None, height=dp(90)))
+        body.add_widget(MDRaisedButton(text="Turnirni boshlash", size_hint_x=1,
+                                       on_release=lambda *a: MDApp.get_running_app().start_tournament()))
         body.add_widget(Widget())
-        body.add_widget(MDRaisedButton(text="Davom etish", size_hint_x=1,
-                                       on_release=lambda *a: self.step2()))
-        b.add_widget(body)
-
-    def change(self, delta):
-        self.group_count = max(2, min(8, self.group_count + delta))
-        self.count_lbl.text = f"[b]{self.group_count}[/b]"
-
-    # ---- 2-qadam: guruhlar ----
-    def _fit(self):
-        n = self.group_count
-        while len(self.names) < n:
-            i = len(self.names)
-            self.names.append(f"Guruh {i + 1}")
-            self.caps.append("")
-            self.pins.append("")
-            self.logos.append(i % LOGO_COUNT + 1)
-        del self.names[n:], self.caps[n:], self.pins[n:], self.logos[n:]
-
-    def step2(self, *a):
-        self._fit()
-        b = self.root_box
-        b.clear_widgets()
-        b.add_widget(self._bar("Guruhlar va kapitanlar   2/2", back=self.step1))
-        sv = ScrollView()
-        inner = MDBoxLayout(orientation="vertical", adaptive_height=True, padding=dp(12),
-                            spacing=dp(14))
-        for i in range(self.group_count):
-            inner.add_widget(self._group_card(i))
-        inner.add_widget(Widget(size_hint_y=None, height=dp(6)))
-        sv.add_widget(inner)
-        b.add_widget(sv)
-        foot = MDBoxLayout(size_hint_y=None, height=dp(74), padding=dp(12), md_bg_color=NAVY2)
-        foot.add_widget(MDRaisedButton(text="Saqlash va boshlash", size_hint_x=1,
-                                       on_release=lambda *a: self.finish()))
-        b.add_widget(foot)
-
-    def _group_card(self, i):
-        color = GROUP_COLORS[i % len(GROUP_COLORS)]
-        card = adaptive_card(orientation="vertical", radius=[14],
-                             md_bg_color=CARD, padding=(0, 0, 0, dp(10)), spacing=dp(4))
-        head = MDCard(size_hint_y=None, height=dp(38), radius=[14, 14, 0, 0], md_bg_color=color,
-                      padding=(dp(14), 0))
-        head.add_widget(MDLabel(text=f"[b]{i + 1}-guruh[/b]", markup=True, theme_text_color="Custom",
-                                text_color=(1, 1, 1, 1)))
-        card.add_widget(head)
-
-        row = MDBoxLayout(orientation="horizontal", adaptive_height=True, padding=(dp(12), dp(6)),
-                          spacing=dp(12))
-        logo_col = MDBoxLayout(orientation="vertical", size_hint=(None, None), width=dp(86),
-                               height=dp(110), spacing=dp(4))
-        prev = LogoButton(source=logo_path(self.logos[i]), size_hint_y=None, height=dp(80))
-        prev.bind(on_release=lambda *a, i=i, prev=prev: self.pick_logo(i, prev))
-        logo_col.add_widget(prev)
-        logo_col.add_widget(MDLabel(text="Logoni tanlash", font_style="Caption", halign="center",
-                                    theme_text_color="Secondary", size_hint_y=None, height=dp(20)))
-        row.add_widget(logo_col)
-
-        fields = MDBoxLayout(orientation="vertical", adaptive_height=True, spacing=dp(2))
-        nf = MDTextField(hint_text="Guruh nomi", text=self.names[i], icon_left="shield-half-full")
-        cf = MDTextField(hint_text="Kapitan ismi", text=self.caps[i], icon_left="account-star")
-        pf = MDTextField(hint_text="Kapitan PIN (kamida 4 raqam)", text=self.pins[i],
-                         input_filter="int", password=True, icon_left="lock-outline")
-        nf.bind(text=lambda w, v, i=i: self.names.__setitem__(i, v))
-        cf.bind(text=lambda w, v, i=i: self.caps.__setitem__(i, v))
-        pf.bind(text=lambda w, v, i=i: self.pins.__setitem__(i, v))
-        for w in (nf, cf, pf):
-            fields.add_widget(w)
-        row.add_widget(fields)
-        card.add_widget(row)
-        return card
-
-    def pick_logo(self, i, prev):
-        def chosen(n):
-            self.logos[i] = n
-            prev.source = logo_path(n)
-        self.app.logo_picker(chosen)
-
-    def finish(self, *a):
-        self.app.finish_setup([x.strip() for x in self.names], [x.strip() for x in self.caps],
-                              [x.strip() for x in self.pins], list(self.logos))
+        self.add_widget(body)
 
 
 class LoginScreen(MDScreen):
@@ -228,36 +117,18 @@ class AdminMixin:
         self.sm.current = "login"
 
     # ---------------- boshlang'ich sozlash ----------------
-    def finish_setup(self, names, caps, pins, logos):
+    def start_tournament(self):
+        """Guruhlar soni so'ralmaydi: turnir ochiladi, guruhlar keyin qo'shiladi."""
         if not self.require_admin():
             return
-        if any(not n for n in names) or any(not c for c in caps):
-            toast("Barcha guruh va kapitan nomlarini to'ldiring")
-            return
-        if len({c.lower() for c in caps}) != len(caps):
-            toast("Kapitan ismlari takrorlanmasin")
-            return
-        if any(not self.valid_pin(p) for p in pins):
-            toast("Har bir kapitan PIN kodi kamida 4 raqam bo'lsin")
-            return
-        d = self.d
-        d["groups"].clear()
-        d["players"].clear()
-        d["matches"].clear()
-        for n, c, pin, logo in zip(names, caps, pins, logos):
-            gid, pid = self.store.new_id(), self.store.new_id()
-            d["players"].append({"id": pid, "name": c, "group": gid, "number": DEFAULT_NUMBER,
-                                 "pos": DEFAULT_POS, "country": DEFAULT_COUNTRY})
-            d["groups"].append({"id": gid, "name": n, "captain_id": pid, "logo": logo,
-                                "pin_hash": self.pin_hash(pin, gid)})
-        d["turn"] = 0
-        d["is_draft_open"] = True
-        d["setup_done"] = True
+        self.d["setup_done"] = True
+        self.d["is_draft_open"] = True
+        self.d["turn"] = 0
         self.store.snapshot["meta"].pop("turn", None)   # turn bazaga albatta yozilsin
         if not self.store.save():
             return
         self.route()
-        toast("Sozlash yakunlandi. O'yinchilar endi ro'yxatdan o'ta oladi.")
+        toast("Turnir boshlandi. O'yinchilar ro'yxatdan o'tadi, guruhlar keyin qo'shiladi.")
 
     # ---------------- Admin oynasi ----------------
     def refresh_admin(self):
@@ -276,10 +147,13 @@ class AdminMixin:
             box.add_widget(MDRaisedButton(text=text, on_release=lambda *a: cb(), size_hint_x=1))
         btn("O'yinchi qo'shish", self.admin_add_player)
         btn("O'yinchi ma'lumotlarini tahrirlash (raqam, pozitsiya, davlat, OVR)", self.admin_edit_player)
+        btn("O'yinchiga APEX TOKEN qo'shish / ayirish", self.admin_tokens)
+        btn("Davomat jarimalari (kech qolish / kelmaslik)", self.admin_penalty)
         btn("O'yinchini o'chirish", self.admin_remove_player)
         btn("O'yinchini guruhga ko'chirish", self.admin_move_player)
         btn("Guruhlar va kapitanlarni boshqarish", self.admin_groups_menu)
         btn("O'yinlar jadvalini yaratish", self.admin_make_fixtures)
+        btn("FINAL o'yinini yaratish", self.admin_make_final)
         btn("Natija kiritish", self.admin_enter_result)
         btn("Gol kiritish (muallif + assist)", self.admin_add_goal)
         btn("Golni o'chirish", self.admin_remove_goal)
@@ -290,6 +164,8 @@ class AdminMixin:
         btn("Kartochkani bekor qilish", self.admin_remove_card)
         btn("Tarkibni boshqarish (qulf / tozalash)", self.admin_lineup_manage)
         btn("Kapitan PIN o'rnatish", self.admin_set_pin)
+        btn("Hakamlar boshqaruvi", self.admin_refs_menu)
+        btn("Market: narsa qo'shish / o'chirish", self.admin_market_menu)
         btn("Draftni noldan boshlash", self.admin_reset_draft)
         btn("Admin parolini o'zgartirish", self.admin_change_pw)
         btn("Chiqish", self.logout)
@@ -330,7 +206,8 @@ class AdminMixin:
             def create(info):
                 if not self.require_admin():
                     return
-                p = {"id": self.store.new_id(), "name": name, "group": None}
+                p = {"id": self.store.new_id(), "name": name, "group": None,
+                     "tokens": TOKEN_START, "token_zero_since": None}
                 p.update(info)
                 self.d["players"].append(p)
                 if self.store.save():
@@ -398,39 +275,50 @@ class AdminMixin:
             if not name or not self.require_admin():
                 return
 
-            def cb2(cap, logo):
-                if not cap or not self.require_admin():
-                    return
-                if self.name_exists(cap):
-                    toast("Bunday ism mavjud")
-                    return
-
-                def cb3(pin):
-                    if not self.require_admin():
+            def cb2(logo):
+                def cb3(pid):
+                    def cb4(pin):
+                        if not self.require_admin():
+                            return
+                        if not self.valid_pin(pin):
+                            toast("PIN kamida 4 raqam bo'lsin")
+                            return
+                        gid = self.store.new_id()
+                        if pid is None:
+                            pid = self.store.new_id()
+                            self.d["players"].append(
+                                {"id": pid, "name": name + " kapitani", "group": gid,
+                                 "number": DEFAULT_NUMBER, "pos": DEFAULT_POS,
+                                 "country": DEFAULT_COUNTRY, "tokens": TOKEN_START,
+                                 "token_zero_since": None})
+                        else:
+                            self.player(pid)["group"] = gid
+                        g = {"id": gid, "name": name, "captain_id": pid,
+                             "pin_hash": self.pin_hash(pin, gid), "ptokens": 0}
+                        self.apply_logo(g, logo)
+                        self.d["groups"].append(g)
+                        self.store.save()
+                        self.refresh_all()
+                        toast("Guruh qo'shildi")
+                    if pid is not None and self.is_captain(pid):
+                        toast("Bu o'yinchi allaqachon kapitan")
                         return
-                    if not self.valid_pin(pin):
-                        toast("PIN kamida 4 raqam bo'lsin")
-                        return
-                    gid, pid = self.store.new_id(), self.store.new_id()
-                    self.d["players"].append({"id": pid, "name": cap, "group": gid,
-                                              "number": DEFAULT_NUMBER, "pos": DEFAULT_POS,
-                                              "country": DEFAULT_COUNTRY})
-                    self.d["groups"].append({"id": gid, "name": name, "captain_id": pid,
-                                             "logo": logo, "pin_hash": self.pin_hash(pin, gid)})
-                    self.store.save()
-                    self.refresh_all()
-                self.input_dialog("Kapitan PIN", "PIN (4+ raqam)", cb3, password=True, digits=True)
-            self.logo_picker(lambda logo: self.input_dialog(
-                "Kapitan ismi", "Kapitan", lambda cap: cb2(cap, logo)))
+                    self.input_dialog("Kapitan PIN", "PIN (4+ raqam)", cb4,
+                                      password=True, digits=True)
+                opts = [(self.player_label(p), p["id"]) for p in self.d["players"]
+                        if not self.is_captain(p["id"])]
+                opts.append(("— Yangi o'yinchi yaratish", None))
+                self.choose_dialog("Kapitan (ro'yxatdan o'tganlar)", opts, cb3)
+            self.logo_picker(cb2)
         self.input_dialog("Yangi guruh nomi", "Nomi", cb)
 
     def admin_set_logo(self):
         opts = [(g["name"], g["id"]) for g in self.d["groups"]]
 
         def chosen(gid):
-            def got(n):
+            def got(value):
                 if self.require_admin():
-                    self.group(gid)["logo"] = n
+                    self.apply_logo(self.group(gid), value)
                     self.store.save()
                     self.refresh_all()
             self.logo_picker(got)
@@ -506,39 +394,31 @@ class AdminMixin:
                 for g in self.d["groups"]]
 
         def chosen(gid):
-            def cb(name):
-                if not name or not self.require_admin():
-                    return
-                p = next((x for x in self.d["players"] if x["name"].lower() == name.lower()), None)
-                if p:
-                    if p["group"] not in (None, gid):
-                        toast("Bu o'yinchi boshqa guruhda")
-                        return
-                    if self.is_captain(p["id"]):
-                        toast("U allaqachon kapitan")
-                        return
-
+            def cb(pid):
                 def cb2(pin):
                     if not self.require_admin():
                         return
                     if not self.valid_pin(pin):
                         toast("PIN kamida 4 raqam bo'lsin")
                         return
-                    q = next((x for x in self.d["players"] if x["name"].lower() == name.lower()), None)
-                    if q:
-                        q["group"] = gid
-                        pid = q["id"]
-                    else:
-                        pid = self.store.new_id()
-                        self.d["players"].append({"id": pid, "name": name, "group": gid})
+                    p = self.player(pid)
+                    if not p:
+                        return
+                    p["group"] = gid
                     g = self.group(gid)
                     g["captain_id"] = pid
                     g["pin_hash"] = self.pin_hash(pin, gid)
                     self.store.save()
                     self.refresh_all()
+                    toast("Kapitan almashtirildi")
                 self.input_dialog("Yangi kapitan PIN", "PIN (4+ raqam)", cb2,
                                   password=True, digits=True)
-            self.input_dialog("Yangi kapitan ismi", "Ism", cb)
+            popts = [(self.player_label(p), p["id"]) for p in self.d["players"]
+                     if not self.is_captain(p["id"])]
+            if not popts:
+                toast("Avval o'yinchilar ro'yxatdan o'tsin")
+                return
+            self.choose_dialog("Yangi kapitan (ro'yxatdan o'tganlar)", popts, cb)
         self.choose_dialog("Qaysi guruh?", opts, chosen)
 
     def admin_delete_group(self):
@@ -587,19 +467,51 @@ class AdminMixin:
     def admin_make_fixtures(self):
         if not self.require_admin():
             return
-        have = {(m["home"], m["away"]) for m in self.d["matches"]}
+        halves = self.stage_groups()
+        scopes = halves if halves else [[g["id"] for g in self.d["groups"]]]
+        if not self.d["groups"]:
+            toast("Avval guruh qo'shing")
+            return
+        have = {(m["home"], m["away"], m.get("stage", "group"), m.get("grp"))
+                for m in self.d["matches"]}
         added = 0
-        for a, b in itertools.combinations([g["id"] for g in self.d["groups"]], 2):
-            if (a, b) in have or (b, a) in have:
-                continue
-            self.d["matches"].append({"id": self.store.new_id(), "home": a, "away": b,
-                                      "hs": None, "as": None, "lineups": {},
-                                      "lineup_locked": False, "cards": [],
-                                      "goals": [], "subs": [], "motm_admin": None})
-            added += 1
+        for si, scope in enumerate(scopes):
+            grp = si if halves else None
+            for a, b in self.planned_pairs(scope, halves is None):
+                if (a, b, "group", grp) in have:
+                    continue
+                self.d["matches"].append({"id": self.store.new_id(), "home": a, "away": b,
+                                          "hs": None, "as": None, "lineups": {},
+                                          "lineup_locked": False, "cards": [],
+                                          "goals": [], "subs": [], "motm_admin": None,
+                                          "stage": "group", "grp": grp, "attendance": []})
+                added += 1
         self.store.save()
         self.refresh_all()
-        toast(f"{added} ta o'yin qo'shildi")
+        kind = "guruh bosqichi" if halves else "2 davrali (uy-mehmon)"
+        toast(f"{added} ta o'yin qo'shildi ({kind})")
+
+    def admin_make_final(self):
+        if not self.require_admin():
+            return
+        if self.final_match():
+            toast("FINAL allaqachon yaratilgan")
+            return
+        if not self.group_stage_complete():
+            toast("Guruh o'yinlari hali to'liq tugamagan")
+            return
+        c = self.final_candidates()
+        if len(c) != 2:
+            toast("Final juftligini aniqlab bo'lmadi")
+            return
+        self.d["matches"].append({"id": self.store.new_id(), "home": c[0], "away": c[1],
+                                  "hs": None, "as": None, "lineups": {},
+                                  "lineup_locked": False, "cards": [],
+                                  "goals": [], "subs": [], "motm_admin": None,
+                                  "stage": "final", "grp": None, "attendance": []})
+        self.store.save()
+        self.refresh_all()
+        toast(f"FINAL yaratildi: {self.gname(c[0])} — {self.gname(c[1])}")
 
     def admin_enter_result(self):
         if not self.require_admin():
@@ -628,6 +540,7 @@ class AdminMixin:
                     toast("Hisobni to'g'ri kiriting")
                     return
                 m["lineup_locked"] = True   # natijadan keyin tarkib qulflanadi
+                self.award_final(m)
                 self.close_dialog()
                 self.store.save()
                 self.refresh_all()
@@ -639,55 +552,12 @@ class AdminMixin:
     def admin_add_goal(self):
         if not self.require_admin():
             return
-        opts = [(self.match_label(m), m["id"]) for m in self.d["matches"]]
-
-        def got_match(mid):
-            m = self.match(mid)
-            topts = [(self.gname(m["home"]), m["home"]), (self.gname(m["away"]), m["away"])]
-
-            def got_team(gid):
-                field = self.team_appeared(m, gid)
-                if not field:
-                    toast("Avval bu jamoaning boshlang'ich 6 tarkibi kiritilsin")
-                    return
-                sopts = [(self.pname(pid), pid) for pid in field]
-
-                def got_scorer(sid):
-                    aopts = [("— Assist yo'q", None)] + \
-                            [(self.pname(pid), pid) for pid in field if pid != sid]
-
-                    def got_assist(aid):
-                        if not self.require_admin():
-                            return
-                        m["goals"].append({"scorer": sid, "assist": aid, "team": gid})
-                        self.recompute_score(m)
-                        self.store.save()
-                        self.refresh_all()
-                        toast(f"Gol! Hisob {m['hs']}:{m['as']}")
-                    self.choose_dialog("Assist bergan o'yinchi", aopts, got_assist)
-                self.choose_dialog("Golni urgan o'yinchi", sopts, got_scorer)
-            self.choose_dialog("Qaysi jamoa urdi?", topts, got_team)
-        self.choose_dialog("Qaysi o'yin?", opts, got_match)
+        self.goal_add()
 
     def admin_remove_goal(self):
         if not self.require_admin():
             return
-        opts = []
-        for m in self.d["matches"]:
-            for i, g in enumerate(m["goals"]):
-                ast = f", assist: {self.pname(g['assist'])}" if g.get("assist") else ""
-                opts.append((f"{self.pname(g['scorer'])}{ast} ({self.match_label(m)})", (m["id"], i)))
-
-        def chosen(v):
-            mid, idx = v
-            m = self.match(mid)
-            if m and 0 <= idx < len(m["goals"]):
-                m["goals"].pop(idx)
-                self.recompute_score(m)
-                self.store.save()
-                self.refresh_all()
-                toast("Gol o'chirildi")
-        self.choose_dialog("Qaysi gol?", opts, chosen)
+        self.goal_remove()
 
     def admin_add_sub(self):
         if not self.require_admin():
@@ -798,6 +668,8 @@ class AdminMixin:
                     if not self.require_admin():
                         return
                     m["cards"].append({"pid": pid, "type": t})
+                    if t == "red":
+                        self.add_tokens(pid, -RED_PENALTY, "Qizil kartochka")
                     self.store.save()
                     self.refresh_all()
                     y, susp = self.card_status(pid)
@@ -820,7 +692,10 @@ class AdminMixin:
             mid, idx = v
             m = self.match(mid)
             if m and 0 <= idx < len(m["cards"]):
+                c = m["cards"][idx]
                 m["cards"].pop(idx)
+                if c["type"] == "red":
+                    self.add_tokens(c["pid"], RED_PENALTY, "Qizil kartochka bekor qilindi")
                 self.store.save()
                 self.refresh_all()
                 toast("Kartochka bekor qilindi")
@@ -868,6 +743,185 @@ class AdminMixin:
         self.confirm_dialog("Draftni noldan boshlash",
                             "Kapitanlardan boshqa hamma o'yinchilar tanlanmaganlarga qaytadi va draft ochiladi.",
                             do)
+
+
+    # ---------------- APEX TOKEN: admin qo'shadi / ayiradi ----------------
+    def admin_tokens(self):
+        if not self.require_admin():
+            return
+        opts = [(f"{p['name']}  ({p.get('tokens', TOKEN_START)} token)", p["id"])
+                for p in self.d["players"]]
+
+        def chosen(pid):
+            def cb(txt):
+                if not self.require_admin():
+                    return
+                try:
+                    delta = int(txt)
+                except ValueError:
+                    toast("Son kiriting (masalan 100 yoki -50)")
+                    return
+                if delta == 0:
+                    return
+                self.add_tokens(pid, delta, "Admin tomonidan")
+                if self.store.save():
+                    toast(f"Balans: {self.player(pid)['tokens']}")
+                self.refresh_all()
+            self.input_dialog(f"{self.pname(pid)}: APEX TOKEN",
+                              "Qo'shish uchun musbat, ayirish uchun manfiy son", cb,
+                              text="100")
+        self.choose_dialog("Qaysi o'yinchi?", opts, chosen)
+
+    # ---------------- davomat jarimalari ----------------
+    def admin_penalty(self):
+        if not self.require_admin():
+            return
+        opts = [(self.match_label(m), m["id"]) for m in self.d["matches"]]
+        if not opts:
+            toast("Avval o'yinlar yaratilsin")
+            return
+
+        def got_match(mid):
+            m = self.match(mid)
+            if not m:
+                return
+            pids = set()
+            for gid in (m["home"], m["away"]):
+                pids |= set(m["lineups"].get(str(gid), [])) | set(self.team_appeared(m, gid))
+            popts = [(self.pname(pid), pid) for pid in sorted(pids)]
+            if not popts:
+                toast("Bu o'yinda tarkib kiritilmagan")
+                return
+
+            def got_player(pid):
+                def got_kind(code):
+                    if not self.require_admin():
+                        return
+                    if self.apply_penalty(pid, mid, code):
+                        if self.store.save():
+                            toast("Jarima belgilandi")
+                        self.refresh_all()
+                self.choose_dialog("Jarima turi", [(n, c) for c, n, _ in PENALTIES], got_kind)
+            self.choose_dialog("Qaysi o'yinchi?", popts, got_player)
+        self.choose_dialog("Qaysi o'yin?", opts, got_match)
+
+    # ---------------- hakamlar ----------------
+    def admin_refs_menu(self):
+        if not self.require_admin():
+            return
+        opts = [("Hakam qo'shish", self.admin_ref_add),
+                ("Hakamni o'chirish", self.admin_ref_del)]
+        self.choose_dialog("Hakamlar", opts, lambda fn: fn())
+
+    def admin_ref_add(self):
+        if not self.require_admin():
+            return
+
+        def cb(name):
+            if not name or not self.require_admin():
+                return
+            if any(r["name"].lower() == name.lower() for r in self.d["refs"]):
+                toast("Bunday hakam mavjud")
+                return
+
+            def cb2(pin):
+                if not self.require_admin():
+                    return
+                if not self.valid_pin(pin):
+                    toast("PIN kamida 4 raqam bo'lsin")
+                    return
+                rid = self.store.new_id()
+                self.d["refs"].append({"id": rid, "name": name,
+                                       "pin_hash": self.ref_hash(pin, rid)})
+                if self.store.save():
+                    toast("Hakam qo'shildi")
+                self.refresh_all()
+            self.input_dialog("Hakam PIN", "PIN (4+ raqam)", cb2, password=True, digits=True)
+        self.input_dialog("Yangi hakam", "Ismi", cb)
+
+    def admin_ref_del(self):
+        if not self.require_admin():
+            return
+        opts = [(r["name"], r["id"]) for r in self.d["refs"]]
+
+        def chosen(rid):
+            self.d["refs"] = [r for r in self.d["refs"] if r["id"] != rid]
+            if self.store.save():
+                toast("Hakam o'chirildi")
+            self.refresh_all()
+        self.choose_dialog("Qaysi hakam?", opts, chosen)
+
+    # ---------------- market boshqaruvi (admin) ----------------
+    def admin_market_menu(self):
+        if not self.require_admin():
+            return
+        opts = [("Narsa qo'shish", self.admin_market_add),
+                ("Narsani o'chirish", self.admin_market_del)]
+        self.choose_dialog("Market", opts, lambda fn: fn())
+
+    def admin_market_add(self):
+        if not self.require_admin():
+            return
+
+        def got_name(name):
+            if not name or not self.require_admin():
+                return
+
+            def got_price(pt):
+                try:
+                    price = int(pt)
+                except ValueError:
+                    toast("Narxni son ko'rinishida kiriting")
+                    return
+                if price <= 0:
+                    toast("Narx musbat bo'lsin")
+                    return
+
+                def got_qty(qt):
+                    try:
+                        qty = int(qt)
+                    except ValueError:
+                        toast("Sonini son ko'rinishida kiriting")
+                        return
+                    if qty <= 0:
+                        toast("Son musbat bo'lsin")
+                        return
+
+                    def got_img(with_img):
+                        def create(img):
+                            self.d["market"].append({"id": self.store.new_id(), "name": name,
+                                                     "desc": "", "price": price, "qty": qty,
+                                                     "img": img})
+                            if self.store.save():
+                                toast("Marketga qo'shildi")
+                            self.refresh_all()
+                        if with_img:
+                            def got(path):
+                                try:
+                                    create(image_to_b64(path, size=128))
+                                except Exception:
+                                    toast("Rasmni o'qib bo'lmadi")
+                            pick_image_file(got)
+                        else:
+                            create(None)
+                    self.choose_dialog("Rasm", [("Telefondan yuklash", True),
+                                                ("Rasmsiz", False)], got_img)
+                self.input_dialog("Necha dona?", "Son", got_qty, text="1", digits=True)
+            self.input_dialog("Narx (APEX PRO TOKEN)", "Narx", got_price, digits=True)
+        self.input_dialog("Narsa nomi", "Nomi", got_name)
+
+    def admin_market_del(self):
+        if not self.require_admin():
+            return
+        opts = [(f"{it['name']} ({it['price']} token, {it['qty']} ta)", it["id"])
+                for it in self.d["market"]]
+
+        def chosen(iid):
+            self.d["market"] = [it for it in self.d["market"] if it["id"] != iid]
+            if self.store.save():
+                toast("O'chirildi")
+            self.refresh_all()
+        self.choose_dialog("Qaysi narsa?", opts, chosen)
 
 
 class AdminApp(AdminMixin, LeagueApp):

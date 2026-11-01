@@ -12,7 +12,12 @@
     },
     "players": {
       "$pid": {
-        ".write": "(!data.exists() && root.child('meta/is_draft_open').val() === true && newData.child('name').isString() && newData.child('name').val().length >= 2 && newData.child('name').val().length <= 30 && !newData.child('group').exists() && !newData.child('base_ovr').exists() && newData.child('number').isNumber() && newData.child('number').val() >= 1 && newData.child('number').val() <= 99 && newData.child('pos').isString() && newData.child('pos').val().matches(/^(GK|DF|MF|FW)$/) && newData.child('country').isString() && newData.child('country').val().length <= 30) || (data.exists() && root.child('meta/is_draft_open').val() === true && !data.child('group').exists() && newData.child('group').isNumber() && newData.child('name').val() === data.child('name').val() && newData.child('number').val() === data.child('number').val() && newData.child('pos').val() === data.child('pos').val() && newData.child('country').val() === data.child('country').val() && newData.child('base_ovr').val() === data.child('base_ovr').val())"
+        ".write": "(!data.exists() && root.child('meta/is_draft_open').val() === true && newData.child('name').isString() && newData.child('name').val().length >= 2 && newData.child('name').val().length <= 30 && !newData.child('group').exists() && !newData.child('base_ovr').exists() && newData.child('number').isNumber() && newData.child('number').val() >= 1 && newData.child('number').val() <= 99 && newData.child('pos').isString() && newData.child('pos').val().matches(/^(GK|DF|MF|FW)$/) && newData.child('country').isString() && newData.child('country').val().length <= 30) || (data.exists() && root.child('meta/is_draft_open').val() === true && !data.child('group').exists() && newData.child('group').isNumber() && newData.child('name').val() === data.child('name').val() && newData.child('number').val() === data.child('number').val() && newData.child('pos').val() === data.child('pos').val() && newData.child('country').val() === data.child('country').val() && newData.child('base_ovr').val() === data.child('base_ovr').val()) || (data.exists() && data.child('tstatus').val() === 'listed' && !newData.child('tstatus').exists() && newData.child('group').isNumber() && newData.child('name').val() === data.child('name').val() && newData.child('number').val() === data.child('number').val() && newData.child('pos').val() === data.child('pos').val() && newData.child('country').val() === data.child('country').val() && newData.child('base_ovr').val() === data.child('base_ovr').val() && newData.child('tokens').val() === data.child('tokens').val())"
+      }
+    },
+    "groups": {
+      "$gid": {
+        ".write": "data.exists() && newData.child('name').val() === data.child('name').val() && newData.child('captain_id').val() === data.child('captain_id').val() && newData.child('pin_hash').val() === data.child('pin_hash').val()"
       }
     },
     "lineups": {
@@ -21,6 +26,28 @@
           ".write": "root.child('meta/is_draft_open').val() === false && root.child('matches').child($mid).child('lineup_locked').val() !== true && !root.child('matches').child($mid).child('hs').exists()",
           ".validate": "newData.hasChildren(['0','1','2','3','4','5']) && !newData.child('6').exists()"
         }
+      }
+    },
+    "matches": {
+      "$mid": {
+        "goals": {
+          ".write": "true"
+        }
+      }
+    },
+    "notifs": {
+      "$id": {
+        ".write": "(!data.exists() && newData.child('to').isString() && newData.child('text').isString()) || (data.exists() && newData.child('to').val() === data.child('to').val() && newData.child('text').val() === data.child('text').val() && newData.child('ts').val() === data.child('ts').val())"
+      }
+    },
+    "transfers": {
+      "$id": {
+        ".write": "(!data.exists() && newData.child('pid').isNumber()) || (data.exists() && newData.child('pid').val() === data.child('pid').val() && newData.child('seller_gid').val() === data.child('seller_gid').val())"
+      }
+    },
+    "market": {
+      "$id": {
+        ".write": "data.exists() && newData.child('name').val() === data.child('name').val() && newData.child('price').val() === data.child('price').val() && newData.child('img').val() === data.child('img').val()"
       }
     }
   }

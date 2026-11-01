@@ -16,12 +16,14 @@ icon.filename = %(source.dir)s/icon.png
 presplash.filename = %(source.dir)s/presplash.png
 android.presplash_color = #0B1437
 
-orientation = portrait
+# Telefon va planshet: portret ham, landshaft ham
+orientation = all
 fullscreen = 0
 
 # Internet kerak: ma'lumotlar Firebase bazasida saqlanadi
 android.permissions = INTERNET,ACCESS_NETWORK_STATE
 
+# Android 5.0 (API 21) dan boshlab, Android 10 (API 29) va planshetlar ham kiradi
 android.api = 33
 android.minapi = 21
 android.ndk = 25b
