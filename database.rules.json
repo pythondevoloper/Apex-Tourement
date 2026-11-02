@@ -36,6 +36,7 @@
       }
     },
     "notifs": {
+      ".indexOn": "ts",
       "$id": {
         ".write": "(!data.exists() && newData.child('to').isString() && newData.child('text').isString()) || (data.exists() && newData.child('to').val() === data.child('to').val() && newData.child('text').val() === data.child('text').val() && newData.child('ts').val() === data.child('ts').val())"
       }

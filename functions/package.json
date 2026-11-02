@@ -1,0 +1,13 @@
+{
+  "name": "apex-functions",
+  "description": "Apex Tournament FCM push server komponenti (Realtime Database triggerlari)",
+  "engines": {
+    "node": "18"
+  },
+  "main": "index.js",
+  "dependencies": {
+    "firebase-admin": "^12.1.0",
+    "firebase-functions": "^5.0.1"
+  },
+  "private": true
+}

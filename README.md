@@ -149,3 +149,33 @@ ochish mumkin.
 - Logo: 12 ta tayyor logo yoki telefondan yuklangan rasm (siqilgan holda bazada saqlanadi).
 - Internet yo'q bo'lsa ilova oxirgi yuklangan ma'lumotni ko'rsatadi (OFLAYN belgisi bilan), lekin o'zgartirish saqlanmaydi.
 - Eski (bitta telefonli) versiyadagi ma'lumotlar ko'chmaydi: admin ilovasida turnirni qaytadan sozlaysiz.
+
+## Push bildirishnoma (FCM) — Cloud Functions
+
+Push yuborish uchun Firebase **server kaliti** kerak, uni APK ichiga joylab bo'lmaydi. Shuning uchun
+push faqat server tomonida — `functions/` papkasidagi Cloud Functions orqali yuboriladi.
+
+**Qanday ishlaydi (topic-based):** ilova o'z auditoriyalariga obuna bo'ladi — `all`, `p{pid}`, `g{gid}`
+(bular `common.py` dagi `my_audiences()` bilan aynan mos). Admin/hakam xabarnoma yozganda u `/notifs/{id}`
+ga tushadi; `pushOnNotif` funksiyasi shu yozuvni ko'rib, `to` topiciga FCM push yuboradi. Serverda qurilma
+tokenlarini saqlash shart emas.
+
+**Joylashtirish (bir marta):**
+
+1. Firebase konsolida loyihangizni oching va **Blaze** (pay-as-you-go) rejaga o'tkazing —
+   Cloud Functions shu rejani talab qiladi. Push odatda bepul limit ichida qoladi.
+2. Konsolda **Cloud Messaging** uchun `google-services.json` ni yuklab oling (mijoz uchun kerak, quyida).
+3. Terminalda:
+   ```
+   npm install -g firebase-tools
+   firebase login
+   cd functions && npm install && cd ..
+   firebase deploy --only functions,database
+   ```
+   (`database` qoidalarini ham yuklaydi — `database.rules.json` dagi `ADMIN_UID_SHU_YERGA` ni
+   avval o'z admin UID ingiz bilan almashtiring.)
+
+**Mijoz tomoni (Android/Kivy) hali qo'shilmagan.** Push'ni qabul qilish uchun ilovaga Firebase
+Android SDK sini ulash kerak: `google-services.json` ni loyihaga qo'yish, `buildozer_*.spec` da
+`firebase-messaging` bog'liqligini yoqish va `pyjnius` orqali FCM token olib, yuqoridagi topiclarga
+`subscribeToTopic` qilish. Bu alohida native integratsiya bosqichi — xohlasangiz keyin bajaramiz.

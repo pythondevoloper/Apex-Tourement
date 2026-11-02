@@ -1,0 +1,17 @@
+{
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "runtime": "nodejs18",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "*.log"
+      ]
+    }
+  ],
+  "database": {
+    "rules": "database.rules.json"
+  }
+}
