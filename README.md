@@ -150,39 +150,55 @@ ochish mumkin.
 - Internet yo'q bo'lsa ilova oxirgi yuklangan ma'lumotni ko'rsatadi (OFLAYN belgisi bilan), lekin o'zgartirish saqlanmaydi.
 - Eski (bitta telefonli) versiyadagi ma'lumotlar ko'chmaydi: admin ilovasida turnirni qaytadan sozlaysiz.
 
-## Push bildirishnoma (FCM) — Cloud Functions
+## Push bildirishnoma (FCM) — bepul GitHub Actions
 
 Push yuborish uchun Firebase **server kaliti** kerak, uni APK ichiga joylab bo'lmaydi. Shuning uchun
-push faqat server tomonida — `functions/` papkasidagi Cloud Functions orqali yuboriladi.
+push server tomonida yuboriladi. Bizda ikkita yo'l bor — **bepul** (GitHub Actions cron, tavsiya etiladi)
+va pulli (Cloud Functions). Quyida bepul yo'l asosiy qilib berilgan.
 
 **Qanday ishlaydi (topic-based):** ilova o'z auditoriyalariga obuna bo'ladi — `all`, `p{pid}`, `g{gid}`
 (bular `common.py` dagi `my_audiences()` bilan aynan mos). Admin/hakam xabarnoma yozganda u `/notifs/{id}`
-ga tushadi; `pushOnNotif` funksiyasi shu yozuvni ko'rib, `to` topiciga FCM push yuboradi. Serverda qurilma
-tokenlarini saqlash shart emas.
+ga tushadi. Server shu yozuvlarni ko'rib, `to` topiciga FCM push yuboradi. Serverda qurilma tokenlarini
+saqlash shart emas. FCM ning o'zi har doim **bepul**.
 
-**Joylashtirish (bir marta):**
+### Bepul yo'l: GitHub Actions cron (tavsiya)
 
-1. Firebase konsolida loyihangizni oching va **Blaze** (pay-as-you-go) rejaga o'tkazing —
-   Cloud Functions shu rejani talab qiladi. Push odatda bepul limit ichida qoladi.
-2. Konsolda **Cloud Messaging** uchun `google-services.json` ni yuklab oling (mijoz uchun kerak, quyida).
-3. Terminalda:
-   ```
-   npm install -g firebase-tools
-   firebase login
-   cd functions && npm install && cd ..
-   firebase deploy --only functions,database
-   ```
-   (`database` qoidalarini ham yuklaydi — `database.rules.json` dagi `ADMIN_UID_SHU_YERGA` ni
-   avval o'z admin UID ingiz bilan almashtiring.)
+`.github/workflows/push.yaml` har ~5 daqiqada `scripts/fcm_push.py` ni ishga tushiradi. Skript
+`/notifs` ni o'qiydi, `push_state/last_id` kursori bilan takroriy yozuvlarni chiqarib tashlaydi va
+yangi xabarnomalarni topic'ga yuboradi. Ommaviy (public) repo uchun GitHub Actions **bepul**.
+Yagona kechikish: cron tufayli push ~5–15 daqiqada yetib boradi (real-time emas).
 
-**Mijoz tomoni (Android/Kivy) qo'shilgan.** `push.py` moduli:
+**Bir martalik sozlash:**
+
+1. Firebase konsoli > **Project settings** > **Service accounts** > **Generate new private key** —
+   JSON kalit faylini yuklab oling (bu bepul, Blaze/karta talab qilinmaydi).
+2. Yuklab olingan JSON ning **butun matnini** GitHub repo kaliti sifatida saqlang:
+   repo > **Settings** > **Secrets and variables** > **Actions** > **New repository secret**
+   - Name: `FIREBASE_SERVICE_ACCOUNT`
+   - Secret: JSON faylning to'liq mazmuni (bir qatorda, nuqtali vergul bilan ajratilgan).
+3. `database.rules.json` dagi `ADMIN_UID_SHU_YERGA` ni o'z admin UID ingiz bilan almashtiring
+   (qoidalar bazaga yozishni himoya qiladi).
+4. Tayyor — har ~5 daqiqada workflow avtomatik ishlaydi. Darhol sinash uchun GitHub repo
+   > **Actions** > **FCM Push (cron)** > **Run workflow** ni bosing.
+
+> Kalit faylini **hech qachon** repo'ga commit qilmang — u faqat GitHub Secret'da turadi.
+
+### Pulli (ixtiyoriy) yo'l: Cloud Functions
+
+`functions/` papkasidagi `pushOnNotif` real-time ishlaydi (kechikishsiz), lekin **Blaze**
+(pay-as-you-go) rejani va `firebase deploy` ni talab qiladi. Pul to'lashni xohlamasangiz bu yo'lni
+o'tkazib yuboring — yuqoridagi bepul cron ham xuddi shu ishni bajaradi.
+
+### Mijoz tomoni (Android/Kivy) — allaqachon qo'shilgan
+
+`push.py` moduli:
 
 - `google-services.json` dan FCM identifikatorlarini o'qib, `FirebaseApp` ni **qo'lda** ishga tushiradi
   (google-services gradle plugin talab qilinmaydi — buildozer uchun bu ishonchliroq).
 - Ilova `route()`/`set_my_pid`/kapitan PIN dan keyin `sync_push()` chaqiriladi: `my_audiences()` dagi
   topiclarga (`all`, `p{pid}`, `g{gid}`) obuna bo'ladi, ortiqchalarini bekor qiladi.
 - Android 13+ da ishga tushganda bir marta `POST_NOTIFICATIONS` ruxsatini so'raydi.
-- Cloud Function `notification` payload yuborgani uchun xabarni tizim trayi avtomatik ko'rsatadi —
+- Server `notification` payload yuborgani uchun xabarni tizim trayi avtomatik ko'rsatadi —
   alohida Java service kerak emas.
 - Desktop'da yoki SDK/`google-services.json` topilmasa `push.py` **jim no-op** qiladi: ilova yiqilmaydi,
   faqat in-app xabarnomalar (qo'ng'iroq belgisi) ishlaydi.
@@ -199,3 +215,4 @@ tokenlarini saqlash shart emas.
 > Eslatma: har ilova (player/admin/referee) uchun alohida Android app ro'yxatdan o'tkazing —
 > `google-services.json` bitta package name ga bog'lanadi. Oddiy yechim: uchalasini bitta
 > `google-services.json` ichida uchta `client` sifatida qo'shing yoki har build uchun almashtiring.
+> Barcha client'lar bitta `project_number`/sender_id ni bo'lishgani uchun topic push baribir ishlaydi.
