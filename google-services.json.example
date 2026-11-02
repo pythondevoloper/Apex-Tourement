@@ -1,0 +1,24 @@
+{
+  "_IZOH": "Bu NAMUNA. Firebase konsoli > Project settings > Your apps > Android app > google-services.json ni yuklab oling va shu fayl nomini google-services.json qilib apex/ papkasiga qo'ying.Quyidagi qiymatlarni o'zingizniki bilan almashtiring.",
+  "project_info": {
+    "project_number": "000000000000",
+    "project_id": "apex-league-2e8fc",
+    "storage_bucket": "apex-league-2e8fc.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:000000000000:android:abcdef0123456789",
+        "android_client_info": {
+          "package_name": "org.apex.apextournament"
+        }
+      },
+      "api_key": [
+        {
+          "current_key": "AIzaSyB_eywUKDLB6UWChG7CmLircsYiEf9nRyM"
+        }
+      ]
+    }
+  ],
+  "configuration_version": "1"
+}

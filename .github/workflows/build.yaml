@@ -44,9 +44,13 @@ jobs:
         run: |
           D=build_${{ matrix.app }}
           mkdir -p "$D"
-          cp common.py cloud.py config.py trophy.png presplash.png logo_*.png "$D"/
+          cp common.py cloud.py config.py push.py trophy.png presplash.png logo_*.png "$D"/
           cp ${{ matrix.app }}.py "$D"/main.py
           cp buildozer_${{ matrix.app }}.spec "$D"/buildozer.spec
+          # FCM uchun google-services.json (agar repo'da bo'lsa) — bo'lmasa push jim o'chadi
+          if [ -f google-services.json ]; then
+            cp google-services.json "$D"/google-services.json
+          fi
           if [ "${{ matrix.app }}" = "admin" ]; then
             cp icon_admin.png "$D"/icon.png
           else

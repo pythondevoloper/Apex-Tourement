@@ -20,8 +20,13 @@ android.presplash_color = #0B1437
 orientation = all
 fullscreen = 0
 
-# Internet kerak: ma'lumotlar Firebase bazasida saqlanadi
-android.permissions = INTERNET,ACCESS_NETWORK_STATE
+# Internet kerak: ma'lumotlar Firebase bazasida saqlanadi.
+# POST_NOTIFICATIONS (Android 13+) FCM push xabarlarini ko'rsatish uchun.
+android.permissions = INTERNET,ACCESS_NETWORK_STATE,POST_NOTIFICATIONS
+
+# FCM push: firebase-messaging AAR o'z servisini manifest merger orqali qo'shadi.
+# FirebaseApp push.py da qo'lda init qilinadi (google-services.json kerak).
+android.gradle_dependencies = com.google.firebase:firebase-messaging:23.4.1,com.google.android.gms:play-services-base:18.2.0
 
 # Android 5.0 (API 21) dan boshlab, Android 10 (API 29) va planshetlar ham kiradi
 android.api = 33

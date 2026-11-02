@@ -175,7 +175,27 @@ tokenlarini saqlash shart emas.
    (`database` qoidalarini ham yuklaydi — `database.rules.json` dagi `ADMIN_UID_SHU_YERGA` ni
    avval o'z admin UID ingiz bilan almashtiring.)
 
-**Mijoz tomoni (Android/Kivy) hali qo'shilmagan.** Push'ni qabul qilish uchun ilovaga Firebase
-Android SDK sini ulash kerak: `google-services.json` ni loyihaga qo'yish, `buildozer_*.spec` da
-`firebase-messaging` bog'liqligini yoqish va `pyjnius` orqali FCM token olib, yuqoridagi topiclarga
-`subscribeToTopic` qilish. Bu alohida native integratsiya bosqichi — xohlasangiz keyin bajaramiz.
+**Mijoz tomoni (Android/Kivy) qo'shilgan.** `push.py` moduli:
+
+- `google-services.json` dan FCM identifikatorlarini o'qib, `FirebaseApp` ni **qo'lda** ishga tushiradi
+  (google-services gradle plugin talab qilinmaydi — buildozer uchun bu ishonchliroq).
+- Ilova `route()`/`set_my_pid`/kapitan PIN dan keyin `sync_push()` chaqiriladi: `my_audiences()` dagi
+  topiclarga (`all`, `p{pid}`, `g{gid}`) obuna bo'ladi, ortiqchalarini bekor qiladi.
+- Android 13+ da ishga tushganda bir marta `POST_NOTIFICATIONS` ruxsatini so'raydi.
+- Cloud Function `notification` payload yuborgani uchun xabarni tizim trayi avtomatik ko'rsatadi —
+  alohida Java service kerak emas.
+- Desktop'da yoki SDK/`google-services.json` topilmasa `push.py` **jim no-op** qiladi: ilova yiqilmaydi,
+  faqat in-app xabarnomalar (qo'ng'iroq belgisi) ishlaydi.
+
+**Mijozni yoqish uchun:**
+
+1. Firebase konsoli > Project settings > **Your apps** > Android ilova qo'shing
+   (package name: `org.apex.apextournament`, `org.apex.apexadmin`, `org.apex.apexreferee`).
+2. **google-services.json** ni yuklab oling va `apex/` papkasiga qo'ying
+   (`google-services.json.example` — namuna). CI uni avtomatik APK ga nusxalaydi.
+3. Uchala `buildozer_*.spec` da allaqachon `firebase-messaging` bog'liqligi va `POST_NOTIFICATIONS`
+   ruxsati yoqilgan. APK ni qayta quring (teg bilan push qiling).
+
+> Eslatma: har ilova (player/admin/referee) uchun alohida Android app ro'yxatdan o'tkazing —
+> `google-services.json` bitta package name ga bog'lanadi. Oddiy yechim: uchalasini bitta
+> `google-services.json` ichida uchta `client` sifatida qo'shing yoki har build uchun almashtiring.

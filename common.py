@@ -46,6 +46,7 @@ from kivymd.uix.bottomnavigation import MDBottomNavigation, MDBottomNavigationIt
 from kivymd.uix.card import MDCard
 
 import config
+import push
 from cloud import Firebase, RemoteStore, CloudError, TOKEN_START
 
 LINEUP_SIZE = 6
@@ -492,6 +493,7 @@ class LeagueApp(MDApp):
         self.build_extra_screens()
         Window.bind(on_keyboard=self._on_key)
         self.sm.current = self.first_screen()
+        Clock.schedule_once(lambda dt: push.request_notification_permission(), 1.0)
         Clock.schedule_once(lambda dt: self.start_sync(), 0.3)
         Clock.schedule_interval(self.poll, getattr(config, "POLL_SECONDS", 6))
         self.check_update()
@@ -563,6 +565,7 @@ class LeagueApp(MDApp):
             return
         self.sm.current = "main"
         self.refresh_all()
+        self.sync_push()
 
     def on_pause(self):
         return True
@@ -913,6 +916,7 @@ class LeagueApp(MDApp):
         me = self.load_me()
         me["pid"] = pid
         self._save_me(me)
+        self.sync_push()
 
     def clear_me(self):
         me = self.load_me()
@@ -941,6 +945,7 @@ class LeagueApp(MDApp):
             if not self.check_pin(gid, pin):
                 return
             self.my_cap_gid = gid
+            self.sync_push()
             cb()
         self.input_dialog("Kapitan PIN", "PIN", got_pin, password=True, digits=True)
 
@@ -979,6 +984,13 @@ class LeagueApp(MDApp):
             out.append(f"p{pid}")
         out += [f"g{gid}" for gid in self.captain_groups()]
         return out
+
+    def sync_push(self):
+        """Android'da FCM topic obunalarini joriy auditoriyalarga moslashtirish."""
+        try:
+            push.sync_topics(self.my_audiences())
+        except Exception:
+            pass
 
     def notifs_for_me(self):
         aud = set(self.my_audiences())
