@@ -50,13 +50,39 @@ def status():
     return f"Push yoqilgan: {len(_state['subscribed'])} topic"
 
 
+def _current_package():
+    """Joriy Android package nomi (masalan org.apex.apextournament). Bo'lmasa None."""
+    if not is_android():
+        return None
+    try:
+        from jnius import autoclass
+        PythonActivity = autoclass("org.kivy.android.PythonActivity")
+        return str(PythonActivity.mActivity.getPackageName())
+    except Exception:
+        return None
+
+
 def _load_ids():
-    """FCM identifikatorlari: avval google-services.json, keyin config.py zaxira."""
+    """FCM identifikatorlari: avval google-services.json, keyin config.py zaxira.
+
+    google-services.json'da uchala ilova (player/admin/referee) uchun alohida
+    `client` bo'lishi mumkin — joriy package nomiga mos client'ni tanlaymiz;
+    mosi topilmasa birinchisiga qaytamiz. project_info (sender_id/project_id)
+    barcha client'lar uchun umumiy.
+    """
     try:
         with open(os.path.join(HERE, "google-services.json"), "r", encoding="utf-8") as f:
             gs = json.load(f)
         proj = gs["project_info"]
-        client = gs["client"][0]
+        clients = gs["client"]
+        pkg = _current_package()
+        client = clients[0]
+        if pkg:
+            for c in clients:
+                pn = c.get("client_info", {}).get("android_client_info", {}).get("package_name")
+                if pn == pkg:
+                    client = c
+                    break
         return {
             "api_key": client["api_key"][0]["current_key"],
             "app_id": client["client_info"]["mobilesdk_app_id"],
