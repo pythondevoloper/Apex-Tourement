@@ -24,6 +24,8 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.behaviors import ButtonBehavior
 from kivy.uix.image import Image
 from kivy.uix.gridlayout import GridLayout
+from kivy.uix.floatlayout import FloatLayout
+from kivymd.uix.floatlayout import MDFloatLayout
 
 from kivymd.app import MDApp
 from kivymd.toast import toast
@@ -634,6 +636,7 @@ class LeagueApp(MDApp):
         bell = "bell-badge-outline" if self.unread_notifs() else "bell-outline"
         self.toolbar.right_action_items = [
             [bell, lambda x: self.show_notifs()],
+            ["magnify", lambda x: self.search_dialog()],
             ["account-circle-outline", lambda x: self.profile_dialog()]]
 
     # ---------------- UI qurish ----------------
@@ -645,6 +648,7 @@ class LeagueApp(MDApp):
                                    left_action_items=[["trophy", lambda x: None]],
                                    right_action_items=[
                                        ["bell-outline", lambda x: self.show_notifs()],
+                                       ["magnify", lambda x: self.search_dialog()],
                                        ["account-circle-outline", lambda x: self.profile_dialog()]])
         root.add_widget(self.toolbar)
         nav = MDBottomNavigation()
@@ -717,6 +721,12 @@ class LeagueApp(MDApp):
     def note(text, h=60):
         return MDLabel(text=text, theme_text_color="Secondary", font_style="Caption",
                        size_hint_y=None, height=dp(h))
+
+    @staticmethod
+    def _fmt_ts(ts):
+        if not ts:
+            return "--:--"
+        return time.strftime("%d.%m %H:%M", time.localtime(int(ts)))
 
     # ---------------- dialoglar ----------------
     def close_dialog(self, *a):
@@ -1010,6 +1020,10 @@ class LeagueApp(MDApp):
         if not p:
             return
         p["tokens"] = max(0, int(p.get("tokens", TOKEN_START)) + delta)
+        hist = p.setdefault("thist", [])
+        hist.append({"ts": now_ts(), "delta": delta, "reason": reason or "-",
+                     "bal": p["tokens"]})
+        del hist[:-50]          # bazani shishirmaslik uchun oxirgi 50 ta
         if p["tokens"] <= 0:
             if not p.get("token_zero_since"):
                 p["token_zero_since"] = now_ts()
@@ -1020,6 +1034,21 @@ class LeagueApp(MDApp):
             p["token_zero_since"] = None
         if reason:
             self.push_notif(f"p{pid}", f"APEX TOKEN {delta:+d}: {reason}. Balans: {p['tokens']}")
+
+    def token_history(self, pid):
+        """O'yinchining APEX TOKEN audit jurnali (oxirgisi tepada)."""
+        p = self.player(pid)
+        if not p:
+            return
+        hist = list(reversed(p.get("thist") or []))
+        if not hist:
+            toast("Token tarixi hali bo'sh")
+            return
+        items = [TwoLineListItem(
+            text=f"{h['delta']:+d}  |  balans {h['bal']}",
+            secondary_text=f"{self._fmt_ts(h.get('ts'))}  —  {h.get('reason') or '-'}",
+            disabled=True) for h in hist]
+        self.show_dialog(f"APEX TOKEN tarixi: {p['name']}", items=items)
 
     def token_decay(self, p):
         ts = p.get("token_zero_since")
@@ -1419,7 +1448,8 @@ class LeagueApp(MDApp):
                             [(self.pname(pid), pid) for pid in field if pid != sid]
 
                     def got_assist(aid):
-                        m["goals"].append({"scorer": sid, "assist": aid, "team": gid})
+                        m["goals"].append({"scorer": sid, "assist": aid, "team": gid,
+                                           "ts": now_ts()})
                         self.recompute_score(m)
                         self.store.save()
                         self.refresh_all()
@@ -1612,6 +1642,82 @@ class LeagueApp(MDApp):
         self.close_dialog()
         pick_image_file(got)
 
+    def search_dialog(self):
+        """Qidiruv va filtr: ism/raqam, pozitsiya va guruh bo'yicha."""
+        state = {"q": "", "pos": None, "gid": None}
+
+        content = MDBoxLayout(orientation="vertical", size_hint_y=None, height=dp(460),
+                              spacing=dp(6), padding=(dp(4), dp(8), dp(4), 0))
+        field = MDTextField(hint_text="Ism yoki raqam bo'yicha qidirish...",
+                            icon_left="magnify", max_text_length=40)
+        content.add_widget(field)
+
+        pos_row = MDBoxLayout(size_hint_y=None, height=dp(46), spacing=dp(6))
+        content.add_widget(pos_row)
+        grp_row = MDBoxLayout(size_hint_y=None, height=dp(46), spacing=dp(6))
+        content.add_widget(grp_row)
+        results = ScrollView(size_hint_y=None, height=dp(300))
+        rlist = MDList()
+        results.add_widget(rlist)
+        content.add_widget(results)
+
+        def matches():
+            q = state["q"].strip().lower()
+            out = []
+            for p in self.d["players"]:
+                if state["pos"] and p.get("pos") != state["pos"]:
+                    continue
+                if state["gid"] is not None and p.get("group") != state["gid"]:
+                    continue
+                if q and q not in p["name"].lower() and q not in str(p.get("number") or ""):
+                    continue
+                out.append(p)
+            out.sort(key=lambda p: p["name"])
+            return out
+
+        def render():
+            rlist.clear_widgets()
+            res = matches()
+            if not res:
+                rlist.add_widget(TwoLineListItem(text="Hech narsa topilmadi",
+                                                 secondary_text="Filtrlarni o'zgartiring",
+                                                 disabled=True))
+                return
+            for p in res[:60]:
+                grp = self.gname(p["group"]) if p["group"] is not None else "tanlanmagan"
+                rlist.add_widget(TwoLineListItem(
+                    text=p["name"],
+                    secondary_text=f"{grp}  |  {self.player_line(p)}",
+                    on_release=lambda x, pid=p["id"]: (self.close_dialog(),
+                                                       self.player_card(pid))))
+
+        def build_pos():
+            pos_row.clear_widgets()
+            opts = [("Hammasi", None)] + [(c, c) for _, c in POSITIONS]
+            for label, val in opts:
+                c = Chip(POS_NAME.get(val, label) if val else label, val, size_hint_x=None,
+                         width=dp(72))
+                c.set_on(state["pos"] == val)
+                c.bind(on_release=lambda x, v=val: (state.update(pos=v), build_pos(), render()))
+                pos_row.add_widget(c)
+
+        def build_grp():
+            grp_row.clear_widgets()
+            gs = self.d["groups"]
+            opts = [("Barcha", None)] + [(g["name"], g["id"]) for g in gs]
+            for label, val in opts:
+                c = Chip(label, val, size_hint_x=None, width=dp(88))
+                c.set_on(state["gid"] == val)
+                c.bind(on_release=lambda x, v=val: (state.update(gid=v), build_grp(), render()))
+                grp_row.add_widget(c)
+
+        field.bind(text=lambda inst, val: (state.update(q=val), render()))
+        build_pos()
+        build_grp()
+        render()
+        self.show_dialog("Qidiruv va filtr", content=content,
+                         buttons=[MDFlatButton(text="Yopish", on_release=self.close_dialog)])
+
     def player_card(self, pid):
         """O'yinchining shaxsiy kartochkasi."""
         p = self.player(pid)
@@ -1685,7 +1791,9 @@ class LeagueApp(MDApp):
             inner.add_widget(MDLabel(text=ln, markup=True, size_hint_y=None, height=dp(26)))
         sv = ScrollView(size_hint_y=None, height=dp(460))
         sv.add_widget(inner)
-        buttons = [MDFlatButton(text="Yopish", on_release=self.close_dialog)]
+        buttons = [MDFlatButton(text="Yopish", on_release=self.close_dialog),
+                   MDFlatButton(text="Token tarixi",
+                                on_release=lambda *a: self.token_history(p["id"]))]
         if p["id"] == self.my_pid() and p["group"] and not p.get("tstatus"):
             buttons.append(MDRaisedButton(
                 text="Transfer listga so'rov",
@@ -1725,6 +1833,30 @@ class LeagueApp(MDApp):
                  (f"[color=#c79100][b]{s['motm']}[/b][/color]" if s["motm"] else 0),
                  f"[b]{s['points']}[/b]"], pid=p["id"],
                 bg=(CARD if i % 2 else CARD2)))
+
+    def build_leaderboards(self, box):
+        """Alohida reytinglar: bombardirlar, assistentlar, MOTM, umumiy ball."""
+        rows = [(p, self.player_stats(p["id"])) for p in self.d["players"]
+                if p["group"] is not None]
+        if not rows:
+            return
+        box.add_widget(self.header("[b]Reytinglar[/b]"))
+
+        def top(key, label, n=8):
+            rr = sorted((r for r in rows if r[1][key] > 0),
+                        key=lambda r: (-r[1][key], r[0]["name"]))[:n]
+            if not rr:
+                return
+            box.add_widget(self.header(f"[b]{label}[/b]", h=30))
+            for i, (p, s) in enumerate(rr, 1):
+                box.add_widget(TwoLineListItem(
+                    text=f"{self.rank_text(i)}.  {p['name']}  —  {s[key]}",
+                    secondary_text=f"{self.gname(p['group'])}  |  {self.player_line(p)}",
+                    on_release=lambda x, pid=p["id"]: self.player_card(pid)))
+        top("goals", "Bombardirlar (gol)")
+        top("assists", "Assistentlar")
+        top("motm", "Player of the Match")
+        top("points", "Umumiy ball")
 
     # ---------------- boshlang'ich sozlashni yakunlash ----------------
 
@@ -1896,12 +2028,18 @@ class LeagueApp(MDApp):
             box.add_widget(self.band(
                 f"[b]{self.gname(m['home'])} - {self.gname(m['away'])}[/b]  ({state})",
                 BLUE, text_color=(0.95, 0.76, 0.19, 1)))
+            box.add_widget(MDRaisedButton(
+                text="O'yin jurnali", size_hint_x=1,
+                on_release=lambda *a, mm=m: self.match_journal(mm)))
             for gid in (m["home"], m["away"]):
                 ids = m["lineups"].get(str(gid), [])
                 names = ", ".join(self.pname(i) for i in ids) if ids else "kiritilmagan"
                 box.add_widget(TwoLineListItem(
                     text=f"{self.gname(gid)}: {len(ids)}/{LINEUP_SIZE}",
                     secondary_text=names, disabled=True))
+                if ids:
+                    box.add_widget(self.header(f"[b]{self.gname(gid)} — maydonda[/b]", h=26))
+                    box.add_widget(self.pitch_widget(m, gid))
             for sb in m["subs"]:
                 box.add_widget(OneLineListItem(
                     text=(f"Almashtirish ({self.gname(sb['team'])}): "
@@ -1931,6 +2069,74 @@ class LeagueApp(MDApp):
                 cs = ", ".join(f"{self.pname(c['pid'])} ({'qizil' if c['type'] == 'red' else 'sariq'})"
                                for c in m["cards"])
                 box.add_widget(OneLineListItem(text="Kartochkalar: " + cs, disabled=True))
+
+    def best_six(self, gid, mid):
+        """Eng kuchli 6 taklif: jarima/token taqiqlanmaganlar OVR bo'yicha."""
+        elig = []
+        for p in self.members(gid):
+            pid = p["id"]
+            if self.token_banned(pid) or self.card_status(pid, mid)[1]:
+                continue
+            elig.append((self.player_ovr(pid)[0], -pid, p))
+        elig.sort(key=lambda t: (t[0], t[1]), reverse=True)
+        return [p["id"] for _, _, p in elig[:LINEUP_SIZE]]
+
+    def pitch_widget(self, m, gid):
+        """Boshlang'ich 6 ni maydon ustida pozitsiyalar bo'yicha joylashtirish."""
+        ids = m["lineups"].get(str(gid), [])
+        pitch = MDFloatLayout(size_hint_y=None, height=dp(300), md_bg_color=(0.13, 0.42, 0.20, 1))
+        # pozitsiya qatlamlari (pastdan yuqoriga): GK, DF, MF, FW
+        lanes = {"GK": 0.12, "DF": 0.36, "MF": 0.62, "FW": 0.86}
+        buckets = {k: [] for k in lanes}
+        for pid in ids:
+            p = self.player(pid)
+            if not p:
+                continue
+            buckets.get(p.get("pos") or "MF", buckets["MF"]).append(p)
+        for pos, cy in lanes.items():
+            row = buckets[pos]
+            n = len(row)
+            for i, p in enumerate(row):
+                cx = (i + 1) / (n + 1)
+                ovr = self.player_ovr(p["id"])[0]
+                node = MDBoxLayout(orientation="vertical", size_hint=(None, None),
+                                   size=(dp(86), dp(54)),
+                                   pos_hint={"center_x": cx, "center_y": cy})
+                node.add_widget(MDLabel(text=f"[b]#{p.get('number') or '-'}[/b]", markup=True,
+                                        font_style="Caption", halign="center", size_hint_y=None,
+                                        height=dp(18), theme_text_color="Custom",
+                                        text_color=GOLD))
+                nm = p["name"].split()[0]
+                node.add_widget(MDLabel(text=f"[b]{nm}[/b]", markup=True, font_style="Caption",
+                                        halign="center", size_hint_y=None, height=dp(18),
+                                        theme_text_color="Custom", text_color=(1, 1, 1, 1)))
+                node.add_widget(MDLabel(text=f"OVR {ovr}", font_style="Caption", halign="center",
+                                        size_hint_y=None, height=dp(16),
+                                        theme_text_color="Custom", text_color=(1, 1, 1, 0.7)))
+                pitch.add_widget(node)
+        return pitch
+
+    def match_journal(self, m):
+        """O'yin jurnali: gol/almashtirish/kartochka voqealari vaqt tartibida."""
+        events = []
+        for gl in m["goals"]:
+            ast = f" (assist: {self.pname(gl['assist'])})" if gl.get("assist") else ""
+            events.append((gl.get("ts"), f"GOL — {self.gname(gl['team'])}: "
+                                         f"{self.pname(gl['scorer'])}{ast}"))
+        for sb in m["subs"]:
+            events.append((sb.get("ts"), f"Almashtirish — {self.gname(sb['team'])}: "
+                                         f"{self.pname(sb['out'])} chiqdi, "
+                                         f"{self.pname(sb['in'])} kirdi"))
+        for c in m["cards"]:
+            kind = "QIZIL" if c["type"] == "red" else "SARIQ"
+            events.append((c.get("ts"), f"{kind} kartochka — {self.pname(c['pid'])}"))
+        events.sort(key=lambda e: e[0] or 0)
+        items = [TwoLineListItem(text=txt, secondary_text=self._fmt_ts(ts), disabled=True)
+                 for ts, txt in events]
+        if not items:
+            items = [OneLineListItem(text="Hozircha voqea yo'q", disabled=True)]
+        title = f"Jurnal: {self.gname(m['home'])} — {self.gname(m['away'])}"
+        self.show_dialog(title, items=items)
 
     def check_pin(self, gid, pin):
         g = self.group(gid)
@@ -1968,6 +2174,12 @@ class LeagueApp(MDApp):
             return
         sel = set(m["lineups"].get(str(gid), []))
         items = []
+        togglers = []          # (item_widget, pid, name)
+
+        def render():
+            for it, pid, name in togglers:
+                it.text = ("[+] " if pid in sel else "[  ] ") + name
+
         for p in self.members(gid):
             pid, name = p["id"], p["name"]
             y, susp = self.card_status(pid, mid)
@@ -1995,12 +2207,23 @@ class LeagueApp(MDApp):
                 toast(f"Tanlandi: {len(sel)}/{LINEUP_SIZE}")
             it.bind(on_release=toggle)
             items.append(it)
+            togglers.append((it, pid, name))
+
+        def suggest(*a):
+            best = self.best_six(gid, mid)
+            if len(best) < LINEUP_SIZE:
+                toast("Yetarli o'yinchi yo'q (jarima/token taqiqlanganlar bor)")
+            sel.clear()
+            sel.update(best)
+            render()
+            toast(f"Taklif: {len(sel)}/{LINEUP_SIZE} — eng yuqori OVR")
 
         def save(*a):
             if self.set_lineup(gid, mid, list(sel)):
                 self.close_dialog()
         self.show_dialog(f"Boshlang'ich {LINEUP_SIZE} ta — {self.gname(gid)}", items=items,
                          buttons=[MDFlatButton(text="Bekor", on_release=self.close_dialog),
+                                  MDFlatButton(text="Eng yaxshi 6", on_release=suggest),
                                   MDRaisedButton(text="Saqlash", on_release=save)])
 
     def set_lineup(self, gid, mid, pids):
@@ -2172,6 +2395,7 @@ class LeagueApp(MDApp):
                 text=f"{self.gname(m['home'])}  {score}  {self.gname(m['away'])}{tag}",
                 disabled=True))
         self.build_stats_table(box)
+        self.build_leaderboards(box)
 
     # ---------------- MARKET oynasi ----------------
     def refresh_market(self):

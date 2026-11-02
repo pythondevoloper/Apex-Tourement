@@ -587,7 +587,7 @@ class AdminMixin:
                     def got_in(iid):
                         if not self.require_admin():
                             return
-                        m["subs"].append({"team": gid, "out": oid, "in": iid})
+                        m["subs"].append({"team": gid, "out": oid, "in": iid, "ts": now_ts()})
                         m["lineup_locked"] = True
                         self.store.save()
                         self.refresh_all()
@@ -669,7 +669,7 @@ class AdminMixin:
                 def got_type(t):
                     if not self.require_admin():
                         return
-                    m["cards"].append({"pid": pid, "type": t})
+                    m["cards"].append({"pid": pid, "type": t, "ts": now_ts()})
                     if t == "red":
                         self.add_tokens(pid, -RED_PENALTY, "Qizil kartochka")
                     self.store.save()
