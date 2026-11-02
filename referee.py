@@ -20,10 +20,10 @@ class RefLoginScreen(MDScreen):
                                theme_text_color="Secondary", size_hint_y=None, height=dp(24)))
         card = adaptive_card(orientation="vertical", radius=[16], md_bg_color=CARD,
                              padding=dp(14), spacing=dp(6))
-        self.name = MDTextField(hint_text="Hakam ismi", icon_left="whistle")
+        self.ref_name = MDTextField(hint_text="Hakam ismi", icon_left="whistle")
         self.pw = MDTextField(hint_text="PIN", password=True, input_filter="int",
                               icon_left="lock-outline")
-        card.add_widget(self.name)
+        card.add_widget(self.ref_name)
         card.add_widget(self.pw)
         self.btn = MDRaisedButton(text="Kirish", size_hint_x=1, on_release=self.go)
         card.add_widget(Widget(size_hint_y=None, height=dp(6)))
@@ -37,7 +37,7 @@ class RefLoginScreen(MDScreen):
         self.btn.text = "Kirilmoqda..." if flag else "Kirish"
 
     def go(self, *a):
-        MDApp.get_running_app().ref_login(self.name.text, self.pw.text)
+        MDApp.get_running_app().ref_login(self.ref_name.text, self.pw.text)
 
 
 class RefereeApp(LeagueApp):

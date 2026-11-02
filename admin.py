@@ -134,41 +134,66 @@ class AdminMixin:
     def refresh_admin(self):
         box = self.b_admin
         box.clear_widgets()
+        box.add_widget(self.hero("Admin panel"))
         box.add_widget(self.note(
-            f"Kirgan hisob: {self.fb.email or '-'}. Barcha o'zgarishlar darhol hamma telefonlarda ko'rinadi.", 44))
-        row = MDBoxLayout(size_hint_y=None, height=dp(56), spacing=dp(10))
-        row.add_widget(MDLabel(text="Draft ochiq / yopiq"))
-        sw = MDSwitch(active=self.d["is_draft_open"], pos_hint={"center_y": 0.5})
-        sw.bind(active=self.on_toggle_draft)
-        row.add_widget(sw)
-        box.add_widget(row)
+            f"Kirgan hisob: {self.fb.email or '-'}. Barcha o'zgarishlar darhol "
+            "hamma telefonlarda ko'rinadi.", 44))
 
-        def btn(text, cb):
-            box.add_widget(MDRaisedButton(text=text, on_release=lambda *a: cb(), size_hint_x=1))
-        btn("O'yinchi qo'shish", self.admin_add_player)
-        btn("O'yinchi ma'lumotlarini tahrirlash (raqam, pozitsiya, davlat, OVR)", self.admin_edit_player)
-        btn("O'yinchiga APEX TOKEN qo'shish / ayirish", self.admin_tokens)
-        btn("Davomat jarimalari (kech qolish / kelmaslik)", self.admin_penalty)
-        btn("O'yinchini o'chirish", self.admin_remove_player)
-        btn("O'yinchini guruhga ko'chirish", self.admin_move_player)
-        btn("Guruhlar va kapitanlarni boshqarish", self.admin_groups_menu)
-        btn("O'yinlar jadvalini yaratish", self.admin_make_fixtures)
-        btn("FINAL o'yinini yaratish", self.admin_make_final)
-        btn("Natija kiritish", self.admin_enter_result)
-        btn("Gol kiritish (muallif + assist)", self.admin_add_goal)
-        btn("Golni o'chirish", self.admin_remove_goal)
-        btn("Almashtirish (zaxiradan kirish / chiqish)", self.admin_add_sub)
-        btn("Almashtirishni bekor qilish", self.admin_remove_sub)
-        btn("Player of the Match tanlash", self.admin_set_motm)
-        btn("Sariq / Qizil kartochka belgilash", self.admin_add_card)
-        btn("Kartochkani bekor qilish", self.admin_remove_card)
-        btn("Tarkibni boshqarish (qulf / tozalash)", self.admin_lineup_manage)
-        btn("Kapitan PIN o'rnatish", self.admin_set_pin)
-        btn("Hakamlar boshqaruvi", self.admin_refs_menu)
-        btn("Market: narsa qo'shish / o'chirish", self.admin_market_menu)
-        btn("Draftni noldan boshlash", self.admin_reset_draft)
-        btn("Admin parolini o'zgartirish", self.admin_change_pw)
-        btn("Chiqish", self.logout)
+        # Draft holati (switch)
+        dcard = adaptive_card(orientation="horizontal", size_hint_y=None, height=dp(56),
+                              radius=[12], md_bg_color=CARD, padding=(dp(14), 0), spacing=dp(8))
+        dcard.add_widget(MDLabel(text="[b]Draft holati[/b]", markup=True, theme_text_color="Custom",
+                                 text_color=(1, 1, 1, 0.9)))
+        dcard.add_widget(Widget())
+        sw = MDSwitch(active=self.d["is_draft_open"], pos_hint={"center_y": 0.5},
+                      size_hint=(None, None), size=(dp(52), dp(32)))
+        sw.bind(active=self.on_toggle_draft)
+        dcard.add_widget(sw)
+        box.add_widget(dcard)
+        box.add_widget(Widget(size_hint_y=None, height=dp(6)))
+
+        def section(title, actions):
+            box.add_widget(self.header(title))
+            for text, cb in actions:
+                b = MDRaisedButton(text=text, size_hint_x=1, md_bg_color=BLUE,
+                                   specific_text_color=GOLD)
+                b.bind(on_release=lambda *a, fn=cb: fn())
+                box.add_widget(b)
+            box.add_widget(Widget(size_hint_y=None, height=dp(10)))
+
+        section("Guruhlar va draft", [
+            ("Guruhlar va kapitanlarni boshqarish", self.admin_groups_menu),
+            ("O'yinlar jadvalini yaratish", self.admin_make_fixtures),
+            ("FINAL o'yinini yaratish", self.admin_make_final),
+            ("Kapitan PIN o'rnatish", self.admin_set_pin),
+            ("Draftni noldan boshlash", self.admin_reset_draft),
+        ])
+        section("O'yinchilar (ro'yxatdan o'tganlar)", [
+            ("Ma'lumotni tahrirlash (raqam, pozitsiya, davlat, OVR)", self.admin_edit_player),
+            ("O'yinchini o'chirish", self.admin_remove_player),
+            ("O'yinchini guruhga ko'chirish", self.admin_move_player),
+        ])
+        section("O'yin va natijalar", [
+            ("Natija kiritish", self.admin_enter_result),
+            ("Gol kiritish (muallif + assist)", self.admin_add_goal),
+            ("Golni o'chirish", self.admin_remove_goal),
+            ("Almashtirish qo'shish", self.admin_add_sub),
+            ("Almashtirishni bekor qilish", self.admin_remove_sub),
+            ("Player of the Match", self.admin_set_motm),
+            ("Sariq / Qizil kartochka", self.admin_add_card),
+            ("Kartochkani bekor qilish", self.admin_remove_card),
+            ("Tarkibni boshqarish (qulf / tozalash)", self.admin_lineup_manage),
+        ])
+        section("APEX TOKEN va intizom", [
+            ("Token qo'shish / ayirish", self.admin_tokens),
+            ("Davomat jarimalari", self.admin_penalty),
+        ])
+        section("Boshqaruv", [
+            ("Hakamlar boshqaruvi", self.admin_refs_menu),
+            ("Market: narsa qo'shish / o'chirish", self.admin_market_menu),
+            ("Admin parolini o'zgartirish", self.admin_change_pw),
+            ("Chiqish", self.logout),
+        ])
 
     def admin_change_pw(self):
         if not self.require_admin():
@@ -192,29 +217,6 @@ class AdminMixin:
         self.store.save()
         toast("Draft ochildi" if value else "Draft yopildi (Locked)")
         self.refresh_all()
-
-    def admin_add_player(self):
-        if not self.require_admin():
-            return
-
-        def cb(name):
-            if not name:
-                return
-            if self.name_exists(name):
-                toast("Bunday ism mavjud")
-                return
-            def create(info):
-                if not self.require_admin():
-                    return
-                p = {"id": self.store.new_id(), "name": name, "group": None,
-                     "tokens": TOKEN_START, "token_zero_since": None}
-                p.update(info)
-                self.d["players"].append(p)
-                if self.store.save():
-                    toast("Qo'shildi")
-                self.refresh_all()
-            self.collect_player_info(create)
-        self.input_dialog("Yangi o'yinchi", "Ismi", cb)
 
     def admin_remove_player(self):
         if not self.require_admin():

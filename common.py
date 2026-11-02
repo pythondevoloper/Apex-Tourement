@@ -321,149 +321,59 @@ class Chip(MDCard):
 
 
 class RegisterScreen(MDScreen):
-    """O'yinchining ro'yxatdan o'tish ekrani: jonli kartochka + tanlanadigan belgilar."""
+    """O'yinchi o'zi ro'yxatdan o'tadi: Ism, Familiya va o'yindagi raqami so'raladi."""
 
     def __init__(self, **kw):
         super().__init__(**kw)
-        self.pos_code = None
-        self.country = None
         root = MDBoxLayout(orientation="vertical")
 
         bar = MDBoxLayout(size_hint_y=None, height=dp(56), md_bg_color=BLUE,
                           padding=(dp(8), 0), spacing=dp(6))
-        bar.add_widget(MDIconButton(icon="arrow-left", theme_text_color="Custom", text_color=GOLD,
-                                    on_release=lambda *a: self.back()))
         bar.add_widget(MDLabel(text="[b]Ro'yxatdan o'tish[/b]", markup=True, font_style="H6",
                                theme_text_color="Custom", text_color=GOLD))
         root.add_widget(bar)
 
         sv = ScrollView()
-        body = MDBoxLayout(orientation="vertical", adaptive_height=True, padding=dp(14),
-                           spacing=dp(10))
-
-        # --- jonli kartochka ---
-        self.preview = MDCard(orientation="horizontal", size_hint_y=None, height=dp(116),
-                              padding=dp(10), spacing=dp(10), radius=[16],
-                              md_bg_color=(0.48, 0.28, 0.12, 1))
-        left = MDBoxLayout(orientation="vertical", size_hint_x=None, width=dp(78))
-        self.pv_num = MDLabel(text="[b]--[/b]", markup=True, font_style="H3", halign="center")
-        self.pv_pos = MDLabel(text="[b]--[/b]", markup=True, halign="center")
-        left.add_widget(self.pv_num)
-        left.add_widget(self.pv_pos)
-        mid = MDBoxLayout(orientation="vertical", spacing=dp(2))
-        self.pv_name = MDLabel(text="[b]Ism va familiya[/b]", markup=True, font_style="H6")
-        self.pv_posname = MDLabel(text="Pozitsiya tanlanmagan", font_style="Caption")
-        self.pv_country = MDLabel(text="Davlat tanlanmagan", font_style="Caption")
-        mid.add_widget(self.pv_name)
-        mid.add_widget(self.pv_posname)
-        mid.add_widget(self.pv_country)
-        self.preview.add_widget(left)
-        self.preview.add_widget(mid)
-        self.preview.add_widget(Image(source=TROPHY, size_hint_x=None, width=dp(60)))
-        body.add_widget(self.preview)
-
-        # --- maydonlar ---
-        body.add_widget(self._title("1. Ma'lumotlaringiz"))
-        self.name_field = MDTextField(hint_text="Ism va familiya", max_text_length=30,
-                                      icon_left="account")
-        self.num_field = MDTextField(hint_text="Futbolka raqami (1-99)", input_filter="int",
-                                     max_text_length=2, icon_left="tshirt-crew")
-        self.name_field.bind(text=self.refresh_preview)
-        self.num_field.bind(text=self.refresh_preview)
-        body.add_widget(self.name_field)
-        body.add_widget(self.num_field)
-
-        body.add_widget(self._title("2. Pozitsiya"))
-        grid = GridLayout(cols=2, spacing=dp(8), size_hint_y=None, height=dp(2 * 46 + 8))
-        self.pos_chips = {}
-        for n, code in POSITIONS:
-            ch = Chip(f"{code}  {n}", value=code)
-            ch.bind(on_release=lambda w, code=code: self.select_pos(code))
-            self.pos_chips[code] = ch
-            grid.add_widget(ch)
-        body.add_widget(grid)
-
-        body.add_widget(self._title("3. Davlat"))
-        rows = (len(COUNTRIES) + 1 + 1) // 2
-        cgrid = GridLayout(cols=2, spacing=dp(8), size_hint_y=None, height=dp(rows * 46 + (rows - 1) * 8))
-        self.country_chips = {}
-        for cname in COUNTRIES + [None]:
-            ch = Chip(cname or "Boshqa davlat...", value=cname)
-            ch.bind(on_release=lambda w, cname=cname: self.select_country(cname))
-            self.country_chips[cname] = ch
-            cgrid.add_widget(ch)
-        body.add_widget(cgrid)
-        self.other_field = MDTextField(hint_text="Davlat nomini yozing", max_text_length=30,
-                                       icon_left="earth", size_hint_y=None, height=0, opacity=0,
-                                       disabled=True)
-        self.other_field.bind(text=self.refresh_preview)
-        body.add_widget(self.other_field)
-        body.add_widget(Widget(size_hint_y=None, height=dp(8)))
+        body = MDBoxLayout(orientation="vertical", adaptive_height=True, padding=dp(16),
+                           spacing=dp(12))
+        body.add_widget(Widget(size_hint_y=None, height=dp(6)))
+        body.add_widget(Image(source=TROPHY, size_hint_y=None, height=dp(120)))
+        body.add_widget(MDLabel(text="Apex Pro League", font_style="H4", halign="center",
+                                theme_text_color="Custom", text_color=GOLD,
+                                size_hint_y=None, height=dp(40)))
+        body.add_widget(MDLabel(
+            text="Ma'lumotlaringizni kiriting. Ro'yxatdan o'tgach, admin sizni guruhga "
+                 "biriktiradi va ilova to'liq ishga tushadi.",
+            halign="center", font_style="Caption", theme_text_color="Secondary",
+            size_hint_y=None, height=dp(48)))
+        card = adaptive_card(orientation="vertical", radius=[16], md_bg_color=CARD,
+                             padding=dp(14), spacing=dp(8))
+        self.first_field = MDTextField(hint_text="Ism", max_text_length=30, icon_left="account")
+        self.last_field = MDTextField(hint_text="Familiya", max_text_length=30,
+                                      icon_left="account-outline")
+        self.num_field = MDTextField(hint_text="O'yindagi raqam (1-99)", input_filter="int",
+                                     max_text_length=2, icon_left="numeric")
+        for f in (self.first_field, self.last_field, self.num_field):
+            card.add_widget(f)
+        body.add_widget(card)
+        body.add_widget(Widget())
         sv.add_widget(body)
         root.add_widget(sv)
 
         foot = MDBoxLayout(size_hint_y=None, height=dp(74), padding=dp(12), md_bg_color=NAVY2)
-        foot.add_widget(MDRaisedButton(text="Ro'yxatdan o'tish", size_hint_x=1,
+        foot.add_widget(MDRaisedButton(text="Yuborish", size_hint_x=1,
                                        on_release=lambda *a: self.submit()))
         root.add_widget(foot)
         self.add_widget(root)
 
-    @staticmethod
-    def _title(text):
-        return MDLabel(text=f"[color=#{GOLD_HEX}][b]{text}[/b][/color]", markup=True,
-                       font_style="Subtitle1", size_hint_y=None, height=dp(30))
-
     def reset(self):
-        self.name_field.text = ""
+        self.first_field.text = ""
+        self.last_field.text = ""
         self.num_field.text = ""
-        self.other_field.text = ""
-        self.pos_code = None
-        self.country = None
-        self.country_set = False
-        self._apply_chips()
-        self.refresh_preview()
-
-    def _apply_chips(self):
-        for code, ch in self.pos_chips.items():
-            ch.set_on(code == self.pos_code)
-        for cname, ch in self.country_chips.items():
-            ch.set_on(cname == self.country and self.country_set)
-        other = self.country_set and self.country is None
-        self.other_field.height = dp(56) if other else 0
-        self.other_field.opacity = 1 if other else 0
-        self.other_field.disabled = not other
-
-    country_set = False
-
-    def select_pos(self, code):
-        self.pos_code = code
-        self._apply_chips()
-        self.refresh_preview()
-
-    def select_country(self, cname):
-        self.country = cname
-        self.country_set = True
-        self._apply_chips()
-        self.refresh_preview()
-
-    def country_value(self):
-        if not self.country_set:
-            return ""
-        return self.country if self.country is not None else self.other_field.text.strip()
-
-    def refresh_preview(self, *a):
-        self.pv_num.text = f"[b]{self.num_field.text or '--'}[/b]"
-        self.pv_pos.text = f"[b]{self.pos_code or '--'}[/b]"
-        self.pv_name.text = f"[b]{self.name_field.text.strip() or 'Ism va familiya'}[/b]"
-        self.pv_posname.text = POS_NAME.get(self.pos_code, "Pozitsiya tanlanmagan")
-        self.pv_country.text = self.country_value() or "Davlat tanlanmagan"
-
-    def back(self):
-        MDApp.get_running_app().sm.current = "main"
 
     def submit(self):
         MDApp.get_running_app().submit_registration(
-            self.name_field.text, self.num_field.text, self.pos_code, self.country_value())
+            self.first_field.text, self.last_field.text, self.num_field.text)
 
 
 class StatusScreen(MDScreen):
@@ -550,9 +460,9 @@ class LeagueApp(MDApp):
         Clock.schedule_once(lambda dt: setattr(self, "_crash_shown", False), 5)
 
     def _on_key(self, window, key, *args):
-        """Android 'Orqaga' tugmasi."""
+        """Android 'Orqaga' tugmasi: ro'yxat ekranidan chiqsa holat qayta tekshiriladi."""
         if key == 27 and self.sm.current == "register":
-            self.sm.current = "main"
+            self.route()
             return True
         return False
 
@@ -625,13 +535,32 @@ class LeagueApp(MDApp):
         return "status"
 
     def route(self):
-        """Ma'lumot yuklangach qaysi ekranni ko'rsatishni hal qiladi."""
-        if self.d["setup_done"]:
-            self.sm.current = "main"
-            self.refresh_all()
-        else:
-            self.status_screen.set("Turnir hali sozlanmagan.\nAdmin sozlagach bu yerda paydo bo'ladi.", True)
+        """Ma'lumot yuklangach qaysi ekranni ko'rsatishni hal qiladi.
+
+        O'yinchi oqimi: turnir boshlanmagan -> kuting; boshlangan, lekin hali
+        ro'yxatdan o'tmagan -> register; o'tgan, lekin guruhga biriktirilmagan ->
+        'admin guruhga bo'lgach' xabari; guruhga tushgan -> asosiy ilova.
+        """
+        if not self.d["setup_done"]:
+            self.status_screen.set(
+                "Turnir hali boshlanmagan.\nAdmin 'Turnirni boshlash' tugmasini bosgach, "
+                "ro'yxatdan o'tishingiz mumkin bo'ladi.", True)
             self.sm.current = "status"
+            return
+        pid = self.my_pid()
+        p = self.player(pid) if pid else None
+        if p is None:
+            self.register_screen.reset()
+            self.sm.current = "register"
+            return
+        if p["group"] is None:
+            self.status_screen.set(
+                f"Assalomu alaykum, [b]{p['name']}[/b]!\n\n"
+                "Kuting — admin sizni guruhga biriktirgach ilova to'liq ishga tushadi.", True)
+            self.sm.current = "status"
+            return
+        self.sm.current = "main"
+        self.refresh_all()
 
     def on_pause(self):
         return True
@@ -1655,32 +1584,6 @@ class LeagueApp(MDApp):
         return (f"{('#' + str(num)) if num else '#-'} | {POS_NAME.get(p.get('pos'), '-')} | "
                 f"{p.get('country') or '-'} | OVR {self.player_ovr(p['id'])[0]}")
 
-    def collect_player_info(self, done):
-        """Raqam -> pozitsiya -> davlat ketma-ket so'raladi. Oxirida done(info) chaqiriladi."""
-        def got_number(txt):
-            if not txt.isdigit() or not 1 <= int(txt) <= 99:
-                toast("Futbolka raqami 1 dan 99 gacha bo'lsin")
-                return
-            number = int(txt)
-
-            def got_pos(code):
-                def finish(country):
-                    country = country.strip()
-                    if not 2 <= len(country) <= 30:
-                        toast("Davlat nomi 2-30 belgi bo'lsin")
-                        return
-                    done({"number": number, "pos": code, "country": country})
-
-                def got_country(c):
-                    if c is None:
-                        self.input_dialog("Davlat nomi", "Davlat", finish)
-                    else:
-                        finish(c)
-                self.choose_dialog("Davlat", [(c, c) for c in COUNTRIES] + [("Boshqa (yozaman)", None)],
-                                   got_country)
-            self.choose_dialog("Pozitsiya", [(f"{n} ({c})", c) for n, c in POSITIONS], got_pos)
-        self.input_dialog("Futbolka raqami", "Raqam (1-99)", got_number, digits=True)
-
     def logo_picker(self, callback):
         """12 ta tayyor logodan biri yoki telefondan yuklangan rasm. callback(raqam | ("img", b64))"""
         rows = (LOGO_COUNT + 3) // 4
@@ -1855,10 +1758,6 @@ class LeagueApp(MDApp):
             card.add_widget(MDLabel(text="O'zgartirish faqat Admin panelda mumkin."))
         box.add_widget(card)
 
-        if is_open and not self.ADMIN_APP and not self.REFEREE_APP:
-            box.add_widget(MDRaisedButton(text="Ro'yxatdan o'tish (men o'ynayman)",
-                                          size_hint_x=1,
-                                          on_release=lambda *a: self.register_dialog()))
         free = self.free_players()
         box.add_widget(self.header(f"Ro'yxatdan o'tgan, tanlanmagan: {len(free)}"))
         if not free:
@@ -1872,44 +1771,37 @@ class LeagueApp(MDApp):
                 else (lambda x, pid=p["id"]: self.player_card(pid))))
 
     # --- o'yinchining o'zi ro'yxatdan o'tishi ---
-    def register_dialog(self):
-        """Ro'yxatdan o'tish ekranini ochadi."""
-        if not self.d["is_draft_open"]:
-            toast("Draft yopilgan. Ro'yxatdan o'tish yopiq.")
-            return
-        self.register_screen.reset()
-        self.sm.current = "register"
-
-    def submit_registration(self, name, number, pos, country):
-        if not self.d["is_draft_open"]:
-            toast("Draft yopilgan")
+    def submit_registration(self, first, last, number):
+        """O'yinchi o'zi ro'yxatdan o'tadi: ism, familiya, raqam. Admin o'yinchi yaratmaydi."""
+        if not self.d["setup_done"]:
+            toast("Turnir hali boshlanmagan. Admin boshlagach ro'yxatdan o'tasiz.")
             return False
-        name = " ".join((name or "").split())
-        country = " ".join((country or "").split())
-        if not 2 <= len(name) <= 30:
-            toast("Ism 2-30 belgi bo'lsin")
+        first = " ".join((first or "").split())
+        last = " ".join((last or "").split())
+        if not 2 <= len(first) <= 30:
+            toast("Ismni to'liq kiriting (2-30 belgi)")
             return False
+        if not 2 <= len(last) <= 30:
+            toast("Familiyani to'liq kiriting (2-30 belgi)")
+            return False
+        if not (str(number).isdigit() and 1 <= int(number) <= 99):
+            toast("O'yindagi raqam 1 dan 99 gacha bo'lsin")
+            return False
+        name = f"{first} {last}"
         if self.name_exists(name):
             toast("Bu ism allaqachon ro'yxatda")
             return False
-        if not (str(number).isdigit() and 1 <= int(number) <= 99):
-            toast("Futbolka raqami 1 dan 99 gacha bo'lsin")
-            return False
-        if pos not in POS_NAME:
-            toast("Pozitsiyani tanlang")
-            return False
-        if not 2 <= len(country) <= 30:
-            toast("Davlatni tanlang yoki yozing")
-            return False
-        p = {"id": self.store.new_id(), "name": name, "group": None, "self_registered": True,
-             "number": int(number), "pos": pos, "country": country,
+        p = {"id": self.store.new_id(), "name": name, "first": first, "last": last,
+             "group": None, "self_registered": True, "number": int(number),
+             "pos": DEFAULT_POS, "country": DEFAULT_COUNTRY,
              "tokens": TOKEN_START, "token_zero_since": None}
         self.d["players"].append(p)
         ok = self.store.save()
-        self.refresh_all()
         if ok:
-            toast("Ro'yxatdan o'tdingiz! Draftda ko'rinasiz.")
-            self.sm.current = "main"
+            self.set_my_pid(p["id"])   # qurilma endi shu o'yinchi sifatida taniladi
+        self.route()
+        if ok:
+            toast("Ro'yxatdan o'tdingiz! Admin guruhga biriktirgach ilova ochiladi.")
         return ok
 
     def ask_pick(self, pid):

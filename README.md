@@ -4,7 +4,7 @@ Endi **ikkita alohida ilova** bor va ikkalasi **bitta bulutli bazani** (Firebase
 
 | Ilova | Kimga | Nima qila oladi |
 |---|---|---|
-| **Apex Tournament** | O'yinchilar, kapitanlar | Ro'yxatdan o'tish (raqam, pozitsiya, davlat), draft, boshlang'ich 6, jadval, statistika, APEX TOKEN, transfer so'rovi, Market (kapitan) |
+| **Apex Tournament** | O'yinchilar, kapitanlar | O'zi ro'yxatdan o'tish (ism, familiya, raqam), guruhga biriktirilgach: tarkib, jadval, statistika, APEX TOKEN, transfer so'rovi, Market (kapitan) |
 | **Apex Admin** | Faqat admin | Hammasi: sozlash, draft ochish/yopish, gol, assist, kartochka, almashtirish, MOTM, natija, o'yinchi/guruh/logo tahriri, tokenlar, jarimalar, hakamlar, Market, FINAL |
 | **Apex Referee** | Admin tayinlagan hakam | Gol va assistlarni kiritish, bayonnomani ko'rish |
 
@@ -47,12 +47,15 @@ Yuklagach **Actions** da uchta build ishlaydi. Tugagach **Artifacts** dan APK la
 ## 4. Birinchi ishga tushirish
 
 1. **Apex Admin** ni oching. Kirish ekranida 1-qadamda yaratgan **email va parolingizni** kiriting.
-2. Kirgach turnir sozlanmagan bo'lsa, **sozlash** ochiladi:
-   - 1/2: guruhlar sonini `-` / `+` tugmalari bilan tanlang.
-   - 2/2: har bir guruh uchun **nom, kapitan, PIN va logo** kiriting, so'ng **Saqlash va boshlash**.
-3. O'yinchilar **Apex Tournament** da **Ro'yxatdan o'tish** ekranini to'ldiradi: ism, raqam, pozitsiya, davlat
-   (tepada jonli kartochka ko'rinib turadi).
-4. Kapitanlar draftda navbat bilan tanlaydi. Admin keyin o'yinlar jadvalini yaratadi, gol/assist/kartochka kiritadi.
+2. Kirgach **Turnirni boshlash** tugmasini bosing. Guruhlar soni so'ralmaydi — guruhlar keyin,
+   Admin paneldan istalgan payt qo'shiladi. Bu paytdan boshlab o'yinchilar ro'yxatdan o'ta oladi.
+3. O'yinchilar **Apex Tournament** da o'zlari ro'yxatdan o'tadi: **Ism**, **Familiya** va
+   **o'yindagi raqami** (1-99) kiritiladi va bazaga saqlanadi. So'ng o'yinchida
+   *"Kuting — admin sizni guruhga biriktirgach ilova to'liq ishga tushadi"* xabari ko'rinadi.
+4. Admin bazadagi ro'yxatdan o'tgan o'yinchilar orasidan **kapitanni tanlaydi**, guruh qo'shadi va
+   **draft** orqali o'yinchilarni guruhlarga biriktiradi. Shundan keyin o'yinchilar ilovadan to'liq
+   foydalana oladi. Admin o'yinlar jadvalini yaratadi, gol/assist/kartochka kiritadi.
+   (Admin o'yinchi **yaratmaydi** — o'yinchilar faqat o'zlari ro'yxatdan o'tadi.)
 
 ## Ilova yopilib qolsa
 
