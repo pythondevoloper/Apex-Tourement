@@ -65,7 +65,7 @@ PENALTY_NAMES = {c: n for c, n, _ in PENALTIES}
 RED_PENALTY = 50                 # qizil kartochka uchun avtomatik jarima
 TEAM_WIN_TOKENS = 200            # liga/final g'olibi jamoasiga APEX PRO TOKEN
 OVR_DECAY_DAYS = 2               # token 0 bo'lsa: har shuncha kunda OVR -1
-VERSION_CODE = 3                 # ilova versiyasi (version.json bilan solishtiriladi)
+VERSION_CODE = 4                 # ilova versiyasi (version.json bilan solishtiriladi)
 UPDATE_URL = getattr(config, "UPDATE_URL",
                      "https://raw.githubusercontent.com/pythondevoloper/Apex-Tourement/main/version.json")
 

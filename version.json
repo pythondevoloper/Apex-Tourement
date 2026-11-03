@@ -1,5 +1,5 @@
 {
-  "version": 3,
-  "note": "Glassmorphism dizayn (binafsha→ko'k gradient, shisha kartalar), mustaqil APEX ADMIN ilovasi (Dashboard/O'yinlar/O'yinchilar/Boshqaruv), FC Mobile uslubidagi oltin o'yinchi kartasi va AI rasm qayta ishlash (Gemini), mashq videosini AI tahlili orqali atribut/OVR belgilash, admin yordamchilari (assistant).",
+  "version": 4,
+  "note": "APEX ADMIN dashboard endi 2-ustunli action-kartalar to'rida (vada qilingan maket uslubi); boshqaruv tugmalari va qolgan tablar (O'yinlar/O'yinchilar/Boshqaruv) to'liq ko'rinadi. Glassmorphism dizayn, FC Mobile oltin karta + Gemini AI rasm/mashq tahlili, admin yordamchilari.",
   "url": "https://github.com/pythondevoloper/Apex-Tourement/releases/latest"
 }
