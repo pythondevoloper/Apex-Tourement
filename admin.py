@@ -3,6 +3,12 @@
 from common import *
 
 
+class ClickCard(ButtonBehavior, MDCard):
+    """Bosiladigan shisha karta (dashboard 'action' kartalari uchun)."""
+    pass
+
+
+
 class SetupScreen(MDScreen):
     """Turnirni boshlash. Guruhlar soni so'ralmaydi: guruhlar keyin, Admin paneldan qo'shiladi."""
 
@@ -134,12 +140,38 @@ class AdminMixin:
 
     # ---------------- Admin oynasi ----------------
     # ---------------- Admin ekranlari (mustaqil nav) ----------------
+    def action_card(self, icon, title, subtitle, cb, color=None):
+        """Mockup uslubidagi bosiladigan glass karta: ikonka + sarlavha + tavsif."""
+        card = ClickCard(orientation="horizontal", size_hint_y=None, height=dp(74),
+                         radius=[14], md_bg_color=CARD, padding=(dp(12), dp(6)), spacing=dp(10))
+        card.bind(on_release=lambda *a: cb())
+        card.add_widget(MDIcon(icon=icon, font_size=dp(26), theme_text_color="Custom",
+                               text_color=color or GOLD, size_hint=(None, None),
+                               size=(dp(44), dp(44)), pos_hint={"center_y": 0.5}))
+        col = MDBoxLayout(orientation="vertical", spacing=dp(1))
+        col.add_widget(MDLabel(text="[b]%s[/b]" % title, markup=True, font_style="Subtitle1",
+                               theme_text_color="Custom", text_color=(1, 1, 1, 0.95)))
+        col.add_widget(MDLabel(text=subtitle, font_style="Caption", theme_text_color="Custom",
+                               text_color=(1, 1, 1, 0.6)))
+        card.add_widget(col)
+        _glass_border(card, radius=14)
+        return card
+
+    def card_grid(self, items, cols=2, ch=74):
+        """items: [(icon, title, subtitle, cb[, color]), ...] — 2 ustunli kartalar to'ri."""
+        rows = (len(items) + cols - 1) // cols
+        g = GridLayout(cols=cols, spacing=dp(8), size_hint_y=None,
+                       height=dp(rows * ch + (rows - 1) * 8))
+        for it in items:
+            g.add_widget(self.action_card(*it))
+        return g
+
     def _admin_section(self, box, title, actions):
-        """Sarlavha + to'la kenglikdagi shisha tugmalar guruhi."""
+        """Sarlavha + to'la kenglikdagi shisha tugmalar guruhi (balandlik qo'yilgan)."""
         box.add_widget(self.header(title))
         for text, cb in actions:
-            b = MDRaisedButton(text=text, size_hint_x=1, md_bg_color=BLUE,
-                               specific_text_color=GOLD)
+            b = MDRaisedButton(text=text, size_hint_x=1, size_hint_y=None, height=dp(48),
+                               md_bg_color=BLUE, specific_text_color=GOLD)
             b.bind(on_release=lambda *a, fn=cb: fn())
             box.add_widget(b)
         box.add_widget(Widget(size_hint_y=None, height=dp(10)))
@@ -179,13 +211,24 @@ class AdminMixin:
         box.add_widget(stat)
         box.add_widget(Widget(size_hint_y=None, height=dp(6)))
 
-        self._admin_section(box, "Guruhlar va draft", [
-            ("Guruhlar va kapitanlarni boshqarish", self.admin_groups_menu),
-            ("O'yinlar jadvalini yaratish", self.admin_make_fixtures),
-            ("FINAL o'yinini yaratish", self.admin_make_final),
-            ("Kapitan PIN o'rnatish", self.admin_set_pin),
-            ("Draftni noldan boshlash", self.admin_reset_draft),
-        ])
+        box.add_widget(self.header("Tezkor boshqaruv"))
+        box.add_widget(self.card_grid([
+            ("account-group", "Guruhlar", "Jamossalarni boshqarish", self.admin_groups_menu),
+            ("calendar-month", "Jadval yaratish", "O'yinlar jadvali", self.admin_make_fixtures),
+            ("file-document-edit-outline", "Natija kiritish", "Hisob va gollar", self.admin_enter_result),
+            ("soccer", "Gollar", "Gol qo'shish / o'chirish", self.admin_goal_menu),
+            ("card-outline", "Kartochkalar", "Sariq va qizil", self.admin_card_menu),
+            ("coins", "Token", "Token boshqaruvi", self.admin_tokens),
+            ("whistle", "Hakamlar", "Hakam tayinlash", self.admin_refs_menu),
+            ("storefront", "Market", "Sovrin va buyumlar", self.admin_market_menu),
+        ]))
+        box.add_widget(self.header("Yana"))
+        box.add_widget(self.card_grid([
+            ("flag", "FINAL", "Final o'yini", self.admin_make_final),
+            ("lock", "Kapitan PIN", "PIN o'rnatish", self.admin_set_pin),
+            ("refresh", "Draft reset", "Noldan boshlash", self.admin_reset_draft),
+            ("shield-account", "Yordamchilar", "Admin assistant", self.admin_assistants_menu),
+        ]))
 
     def refresh_matches(self):
         box = self.b_matches
@@ -603,6 +646,20 @@ class AdminMixin:
                 MDFlatButton(text="Bekor", on_release=self.close_dialog),
                 MDRaisedButton(text="Saqlash", on_release=save)])
         self.choose_dialog("Qaysi o'yin?", opts, chosen)
+
+    def admin_goal_menu(self):
+        if not self.require_admin():
+            return
+        self.choose_dialog("Gollar", [("Gol qo'shish (muallif + assist)", self.admin_add_goal),
+                                      ("Golni o'chirish", self.admin_remove_goal)],
+                           lambda fn: fn())
+
+    def admin_card_menu(self):
+        if not self.require_admin():
+            return
+        self.choose_dialog("Kartochkalar", [("Sariq / Qizil qo'shish", self.admin_add_card),
+                                            ("Kartochkani bekor qilish", self.admin_remove_card)],
+                           lambda fn: fn())
 
     def admin_add_goal(self):
         if not self.require_admin():
@@ -1103,10 +1160,13 @@ class AdminApp(AdminMixin, LeagueApp):
 
     def refresh_all(self):
         self.update_toolbar()
-        self.refresh_dash()
-        self.refresh_matches()
-        self.refresh_players()
-        self.refresh_control()
+        for fn in (self.refresh_dash, self.refresh_matches,
+                   self.refresh_players, self.refresh_control):
+            try:
+                fn()
+            except Exception as e:
+                traceback.print_exc()
+                toast("%s xato: %r" % (getattr(fn, "__name__", "?"), e))
 
     def build_extra_screens(self):
         self.sm.add_widget(LoginScreen(name="login", md_bg_color=NAVY))
