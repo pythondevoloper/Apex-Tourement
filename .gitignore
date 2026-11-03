@@ -5,3 +5,7 @@ __pycache__/
 bin/
 uploads/
 *.log
+
+# Maxfiy kalitlar — HECH QACHON commit qilinmaydi
+gemini_secret.py
+google-services.json

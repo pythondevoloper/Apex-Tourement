@@ -27,11 +27,10 @@ Har qanday telefondagi o'zgarish 6 soniya ichida boshqa telefonlarda ko'rinadi.
 FIREBASE_DB_URL = "https://...firebaseio.com"   # 2-qadam
 FIREBASE_API_KEY = "AIza..."                     # 4-qadam
 ADMIN_EMAIL = "admin@example.com"                # 3-qadamdagi email
-GEMINI_API_KEY = ""                              # ixtiyoriy: AI rasm/video (5.2 bo'lim)
 ```
 
-> `GEMINI_API_KEY` bo'sh bo'lsa hammasi ishlaydi, faqat AI rasm/video funksiyalari o'chadi.
-> **Diqqat: haqiqiy kalitni GitHub ga PUSH QILMANG.**
+> Gemini AI kaliti `config.py` da EMAS — u `.gitignore` dagi `gemini_secret.py` faylida turadi
+> (qarang: 5.2 bo'lim). Shuning uchun kalit GitHub ga tushmaydi.
 
 ## 3. GitHub
 
@@ -241,11 +240,16 @@ bo'lmasa oddiy rasm saqlanadi.
 
 ### Gemini API (ixtiyoriy, lekin bepul)
 1. https://aistudio.google.com — **bepul** API kalit oling.
-2. `config.py` > `GEMINI_API_KEY = "..."` ga yozing. **Kalitni GitHub ga push qilmang!**
-   (`config.py` repo'ga kiritilgan — kalitni yozsangiz, uni commit qilmay turib APK quring.)
-3. `gemini.py` model nomlarini sozlash uchun `GEMINI_MODEL_IMAGE` / `GEMINI_MODEL_VIDEO`
-   qiymatlarini `config.py` da berish mumkin (standart: `gemini-2.5-flash-image`, `gemini-2.5-flash`).
-4. Kalit bo'lmasa barcha AI funksiyalari **jim no-op** — ilova yiqilmaydi.
+2. `apex/` papkasida **`gemini_secret.py`** faylini yarating (`.gitignore` da — push bo'lmaydi):
+   ```python
+   GEMINI_API_KEY = "sizning_kalitingiz"
+   ```
+   `config.py` uni avtomatik o'qiydi. **Kalitni `config.py` ga yozmang** — GitHub secret
+   scanning uni bloklaydi va tarixda qoladi.
+3. Model nomlari kerak bo'lsa `config.py` da `GEMINI_MODEL_IMAGE` / `GEMINI_MODEL_VIDEO`
+   bilan sozlanadi (standart: `gemini-2.5-flash-image`, `gemini-2.5-flash`).
+4. `gemini_secret.py` bo'lmasa yoki bo'sh bo'lsa barcha AI funksiyalari **jim no-op** — ilova yiqilmaydi.
+
 
 ### Mashq videosi + gibrid OVR
 Admin > **O'yinchilar** > o'yinchi kartasi > **AI / Mashq**:
