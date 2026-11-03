@@ -8,6 +8,7 @@ class RefLoginScreen(MDScreen):
 
     def __init__(self, **kw):
         super().__init__(**kw)
+        self.add_widget(GradientBackground())     # glassmorphism gradient fon (kontent ortida)
         sv = ScrollView()
         box = MDBoxLayout(orientation="vertical", adaptive_height=True, padding=dp(24),
                           spacing=dp(12))

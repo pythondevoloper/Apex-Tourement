@@ -19,6 +19,7 @@ from kivy.base import ExceptionHandler, ExceptionManager
 from kivy.clock import Clock
 from kivy.metrics import dp
 from kivy.core.window import Window
+from kivy.graphics import Color, Rectangle, Line
 from kivy.uix.widget import Widget
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.behaviors import ButtonBehavior
@@ -78,16 +79,20 @@ BASE_OVR = 60          # admin o'zgartirmasa, boshlang'ich reyting
 LOGO_COUNT = 12        # logo_1.png ... logo_12.png
 
 
-# ---------------- Ranglar (Apex Pro League uslubi) ----------------
-NAVY = (0.043, 0.078, 0.216, 1)      # asosiy fon
-NAVY2 = (0.07, 0.12, 0.30, 1)        # dialog foni
-BLUE = (0.10, 0.20, 0.52, 1)         # toolbar / sarlavhalar
-CARD = (0.09, 0.16, 0.38, 1)         # ro'yxat qatorlari
-CARD2 = (0.07, 0.13, 0.32, 1)        # navbatma-navbat qator
-GOLD = (0.95, 0.76, 0.19, 1)
-GOLD_HEX = "F2C230"
-GREEN = (0.06, 0.45, 0.28, 1)        # draft ochiq
-RED = (0.55, 0.12, 0.14, 1)          # draft yopiq
+# ---------------- Ranglar (Glassmorphism: binafsha→ko'k gradient, shisha kartalar) ----------------
+GRAD_TOP = (0.294, 0.165, 0.549, 1)   # #4B2A8C binafsha — ekran yuqorisi
+GRAD_BOT = (0.165, 0.294, 0.549, 1)   # #2A4B8C ko'k — ekran pasti
+TRANSPARENT = (0, 0, 0, 0)
+
+NAVY = (0.086, 0.075, 0.20, 1)        # to'q indigo: ekran zaxira foni
+NAVY2 = (0.157, 0.129, 0.329, 0.97)   # dialog foni (yarim shisha)
+BLUE = (0.235, 0.176, 0.459, 1)       # toolbar / pastki nav (indigo)
+CARD = (1, 1, 1, 0.10)                # shisha karta (yarim shaffof oq)
+CARD2 = (1, 1, 1, 0.055)              # navbatma-navbat shisha qator
+GOLD = (0.361, 0.820, 1.0, 1)         # aksent: yorqin firuza (cyan)
+GOLD_HEX = "5CD1FF"
+GREEN = (0.16, 0.62, 0.42, 1)         # draft ochiq
+RED = (0.85, 0.29, 0.35, 1)           # draft yopiq
 GROUP_COLORS = [(0.80, 0.22, 0.25, 1), (0.15, 0.45, 0.85, 1), (0.10, 0.60, 0.40, 1),
                 (0.85, 0.50, 0.10, 1), (0.55, 0.30, 0.80, 1), (0.05, 0.60, 0.65, 1),
                 (0.80, 0.30, 0.55, 1), (0.45, 0.55, 0.15, 1)]
@@ -154,11 +159,71 @@ class StatRow(ButtonBehavior, MDBoxLayout):
     pass
 
 
+def _glass_border(card, radius=None, color=(1, 1, 1, 0.16), width=1.0):
+    """Shisha kartaga nozik nurli chegara chizadi (o'lcham o'zgarganda yangilanadi)."""
+    try:
+        r = radius
+        if r is None:
+            rr0 = getattr(card, "radius", None)
+            r = rr0[0] if isinstance(rr0, (list, tuple)) and rr0 else 12
+    except Exception:
+        r = 12
+    state = {"line": None}
+
+    def _upd(*a):
+        try:
+            w, h = card.width, card.height
+            if w <= 1 or h <= 1:
+                return
+            rr = min(r, w / 2, h / 2)
+            if state["line"] is None:
+                with card.canvas.after:
+                    Color(*color)
+                    state["line"] = Line(width=width,
+                                         rounded_rectangle=(card.x, card.y, w, h, rr))
+            else:
+                state["line"].rounded_rectangle = (card.x, card.y, w, h, rr)
+        except Exception:
+            pass
+
+    card.bind(pos=_upd, size=_upd)
+    _upd()
+
+
 def adaptive_card(**kw):
     """Ichidagi elementlarga qarab balandligi o'zgaradigan kartochka (MDCard da adaptive_height yo'q)."""
     card = MDCard(size_hint_y=None, **kw)
     card.bind(minimum_height=card.setter("height"))
+    _glass_border(card)
     return card
+
+
+class GradientBackground(Widget):
+    """Vertikal binafsha→ko'k gradient fon (glassmorphism). Ekran ortiga qo'yiladi.
+
+    Kivy'da tayyor gradient primitiv yo'q — ingichka rangli bo'laklar bilan
+    silliq vertikal gradient chizamiz. O'lcham/o'rin o'zgarganda qayta chiziladi.
+    """
+
+    def __init__(self, c_top=GRAD_TOP, c_bot=GRAD_BOT, steps=64, **kw):
+        super().__init__(**kw)
+        self._c_top, self._c_bot, self._steps = c_top, c_bot, steps
+        self.bind(size=self._redraw, pos=self._redraw)
+        self._redraw()
+
+    def _redraw(self, *a):
+        self.canvas.before.clear()
+        n = max(2, self._steps)
+        h = self.height / n
+        if h <= 0 or self.width <= 0:
+            return
+        r0, g0, b0 = self._c_top[:3]
+        r1, g1, b1 = self._c_bot[:3]
+        with self.canvas.before:
+            for i in range(n):
+                t = i / (n - 1)          # 0 = past (c_bot), 1 = yuqori (c_top)
+                Color(r1 + (r0 - r1) * t, g1 + (g0 - g1) * t, b1 + (b0 - b1) * t, 1)
+                Rectangle(pos=(self.x, self.y + h * i), size=(self.width, h + 0.6))
 
 
 class LogoButton(ButtonBehavior, Image):
@@ -313,6 +378,7 @@ class Chip(MDCard):
     def __init__(self, text, value=None, **kw):
         super().__init__(size_hint_y=None, height=dp(46), radius=[12], padding=(dp(8), 0),
                          md_bg_color=CARD, ripple_behavior=True, **kw)
+        _glass_border(self, radius=12)
         self.value = value
         self.label = MDLabel(text=text, halign="center", theme_text_color="Custom",
                              text_color=(1, 1, 1, 1))
@@ -328,6 +394,7 @@ class RegisterScreen(MDScreen):
 
     def __init__(self, **kw):
         super().__init__(**kw)
+        self.add_widget(GradientBackground())     # glassmorphism gradient fon (kontent ortida)
         root = MDBoxLayout(orientation="vertical")
 
         bar = MDBoxLayout(size_hint_y=None, height=dp(56), md_bg_color=BLUE,
@@ -384,6 +451,7 @@ class StatusScreen(MDScreen):
 
     def __init__(self, **kw):
         super().__init__(**kw)
+        self.add_widget(GradientBackground())     # glassmorphism gradient fon (kontent ortida)
         box = MDBoxLayout(orientation="vertical", padding=dp(24), spacing=dp(14))
         box.add_widget(Widget())
         box.add_widget(Image(source=TROPHY, size_hint_y=None, height=dp(160)))
@@ -471,8 +539,8 @@ class LeagueApp(MDApp):
 
     def _build_app(self):
         self.title = self.APP_TITLE
-        self.theme_cls.primary_palette = "Amber"
-        self.theme_cls.accent_palette = "Blue"
+        self.theme_cls.primary_palette = "DeepPurple"
+        self.theme_cls.accent_palette = "Cyan"
         self.theme_cls.theme_style = "Dark"
         self.icon = TROPHY
         Window.softinput_mode = "below_target"
@@ -645,6 +713,7 @@ class LeagueApp(MDApp):
     # ---------------- UI qurish ----------------
     def build_main(self):
         scr = MDScreen(name="main", md_bg_color=NAVY)
+        scr.add_widget(GradientBackground())      # glassmorphism gradient fon (kontent ortida)
         root = MDBoxLayout(orientation="vertical")
         self.toolbar = MDTopAppBar(title="Apex Pro League", elevation=2, md_bg_color=BLUE,
                                    specific_text_color=GOLD,
@@ -667,9 +736,6 @@ class LeagueApp(MDApp):
         if not self.REFEREE_APP:
             self.t_market, self.b_market = self.make_tab("market", "Market", "storefront")
             tabs.append(self.t_market)
-        if self.ADMIN_APP:
-            self.t_admin, self.b_admin = self.make_tab("admin", "Admin", "shield-account")
-            tabs.append(self.t_admin)
         for t in tabs:
             nav.add_widget(t)
         root.add_widget(nav)
@@ -678,7 +744,7 @@ class LeagueApp(MDApp):
 
     def make_tab(self, name, text, icon):
         item = MDBottomNavigationItem(name=name, text=text, icon=icon)
-        sv = MDScrollView(md_bg_color=NAVY)      # tab foni to'q ko'k bo'lsin
+        sv = MDScrollView(md_bg_color=TRANSPARENT)  # shaffof — ortdagi gradient ko'rinsin
         box = MDBoxLayout(orientation="vertical", adaptive_height=True,
                           padding=dp(10), spacing=dp(6))
         sv.add_widget(box)
@@ -1881,8 +1947,6 @@ class LeagueApp(MDApp):
         self.refresh_table()
         if not self.REFEREE_APP:
             self.refresh_market()
-        if self.ADMIN_APP:
-            self.refresh_admin()
 
     # ---------------- DRAFT oynasi ----------------
     def refresh_draft(self):

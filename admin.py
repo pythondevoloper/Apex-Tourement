@@ -8,6 +8,7 @@ class SetupScreen(MDScreen):
 
     def __init__(self, **kw):
         super().__init__(**kw)
+        self.add_widget(GradientBackground())     # glassmorphism gradient fon
         body = MDBoxLayout(orientation="vertical", padding=dp(24), spacing=dp(14))
         body.add_widget(Widget())
         body.add_widget(Image(source=TROPHY, size_hint_y=None, height=dp(150)))
@@ -31,6 +32,7 @@ class LoginScreen(MDScreen):
 
     def __init__(self, **kw):
         super().__init__(**kw)
+        self.add_widget(GradientBackground())     # glassmorphism gradient fon
         sv = ScrollView()
         box = MDBoxLayout(orientation="vertical", adaptive_height=True, padding=dp(24),
                           spacing=dp(12))
@@ -131,8 +133,19 @@ class AdminMixin:
         toast("Turnir boshlandi. O'yinchilar ro'yxatdan o'tadi, guruhlar keyin qo'shiladi.")
 
     # ---------------- Admin oynasi ----------------
-    def refresh_admin(self):
-        box = self.b_admin
+    # ---------------- Admin ekranlari (mustaqil nav) ----------------
+    def _admin_section(self, box, title, actions):
+        """Sarlavha + to'la kenglikdagi shisha tugmalar guruhi."""
+        box.add_widget(self.header(title))
+        for text, cb in actions:
+            b = MDRaisedButton(text=text, size_hint_x=1, md_bg_color=BLUE,
+                               specific_text_color=GOLD)
+            b.bind(on_release=lambda *a, fn=cb: fn())
+            box.add_widget(b)
+        box.add_widget(Widget(size_hint_y=None, height=dp(10)))
+
+    def refresh_dash(self):
+        box = self.b_dash
         box.clear_widgets()
         box.add_widget(self.hero("Admin panel"))
         box.add_widget(self.note(
@@ -150,30 +163,47 @@ class AdminMixin:
         sw.bind(active=self.on_toggle_draft)
         dcard.add_widget(sw)
         box.add_widget(dcard)
+
+        # Statistika
+        stat = adaptive_card(orientation="horizontal", size_hint_y=None, height=dp(72),
+                             radius=[12], md_bg_color=CARD, padding=(dp(10), 0), spacing=dp(6))
+        for val, lab in ((len(self.d["groups"]), "Guruh"),
+                         (len(self.d["players"]), "O'yinchi"),
+                         (len(self.d["matches"]), "O'yin")):
+            col = MDBoxLayout(orientation="vertical")
+            col.add_widget(MDLabel(text=str(val), halign="center", font_style="H5",
+                                   theme_text_color="Custom", text_color=GOLD))
+            col.add_widget(MDLabel(text=lab, halign="center", font_style="Caption",
+                                   theme_text_color="Custom", text_color=(1, 1, 1, 0.7)))
+            stat.add_widget(col)
+        box.add_widget(stat)
         box.add_widget(Widget(size_hint_y=None, height=dp(6)))
 
-        def section(title, actions):
-            box.add_widget(self.header(title))
-            for text, cb in actions:
-                b = MDRaisedButton(text=text, size_hint_x=1, md_bg_color=BLUE,
-                                   specific_text_color=GOLD)
-                b.bind(on_release=lambda *a, fn=cb: fn())
-                box.add_widget(b)
-            box.add_widget(Widget(size_hint_y=None, height=dp(10)))
-
-        section("Guruhlar va draft", [
+        self._admin_section(box, "Guruhlar va draft", [
             ("Guruhlar va kapitanlarni boshqarish", self.admin_groups_menu),
             ("O'yinlar jadvalini yaratish", self.admin_make_fixtures),
             ("FINAL o'yinini yaratish", self.admin_make_final),
             ("Kapitan PIN o'rnatish", self.admin_set_pin),
             ("Draftni noldan boshlash", self.admin_reset_draft),
         ])
-        section("O'yinchilar (ro'yxatdan o'tganlar)", [
-            ("Ma'lumotni tahrirlash (raqam, pozitsiya, davlat, OVR)", self.admin_edit_player),
-            ("O'yinchini o'chirish", self.admin_remove_player),
-            ("O'yinchini guruhga ko'chirish", self.admin_move_player),
+
+    def refresh_matches(self):
+        box = self.b_matches
+        box.clear_widgets()
+        box.add_widget(self.hero("O'yinlar va natijalar"))
+        ms = self.d["matches"]
+        if ms:
+            box.add_widget(self.header(f"Jami o'yinlar: {len(ms)}"))
+            for m in ms:
+                box.add_widget(OneLineListItem(text=self.match_label(m), disabled=True))
+        else:
+            box.add_widget(self.note(
+                "Hali o'yinlar jadvali yaratilmagan. 'Jadval yaratish' orqali boshlang.", 44))
+        self._admin_section(box, "Jadval", [
+            ("O'yinlar jadvalini yaratish", self.admin_make_fixtures),
+            ("FINAL o'yinini yaratish", self.admin_make_final),
         ])
-        section("O'yin va natijalar", [
+        self._admin_section(box, "Natija va statistika", [
             ("Natija kiritish", self.admin_enter_result),
             ("Gol kiritish (muallif + assist)", self.admin_add_goal),
             ("Golni o'chirish", self.admin_remove_goal),
@@ -184,11 +214,33 @@ class AdminMixin:
             ("Kartochkani bekor qilish", self.admin_remove_card),
             ("Tarkibni boshqarish (qulf / tozalash)", self.admin_lineup_manage),
         ])
-        section("APEX TOKEN va intizom", [
+
+    def refresh_players(self):
+        box = self.b_players
+        box.clear_widgets()
+        box.add_widget(self.hero("O'yinchilar"))
+        ps = self.d["players"]
+        box.add_widget(self.header(f"Ro'yxatdan o'tganlar: {len(ps)}"))
+        if not ps:
+            box.add_widget(self.note("Hali hech kim ro'yxatdan o'tmagan.", 40))
+        for p in ps:
+            box.add_widget(TwoLineListItem(text=p["name"], secondary_text=self.player_line(p),
+                                           disabled=True))
+        self._admin_section(box, "Boshqaruv", [
+            ("Ma'lumotni tahrirlash (raqam, pozitsiya, davlat, OVR)", self.admin_edit_player),
+            ("O'yinchini o'chirish", self.admin_remove_player),
+            ("O'yinchini guruhga ko'chirish", self.admin_move_player),
+        ])
+
+    def refresh_control(self):
+        box = self.b_control
+        box.clear_widgets()
+        box.add_widget(self.hero("Boshqaruv"))
+        self._admin_section(box, "APEX TOKEN va intizom", [
             ("Token qo'shish / ayirish", self.admin_tokens),
             ("Davomat jarimalari", self.admin_penalty),
         ])
-        section("Boshqaruv", [
+        self._admin_section(box, "Tizim", [
             ("Hakamlar boshqaruvi", self.admin_refs_menu),
             ("Market: narsa qo'shish / o'chirish", self.admin_market_menu),
             ("Admin parolini o'zgartirish", self.admin_change_pw),
@@ -931,6 +983,39 @@ class AdminApp(AdminMixin, LeagueApp):
     APP_TITLE = "Apex Admin"
     TOOLBAR_NAME = "Apex Admin"
     CACHE_NAME = "apex_admin_cache.json"
+
+    def build_main(self):
+        """Admin — mustaqil ilova: o'yinchi tab'lari yo'q, faqat admin nav."""
+        scr = MDScreen(name="main", md_bg_color=NAVY)
+        scr.add_widget(GradientBackground())      # glassmorphism gradient fon
+        root = MDBoxLayout(orientation="vertical")
+        self.toolbar = MDTopAppBar(title="APEX ADMIN", elevation=2, md_bg_color=BLUE,
+                                   specific_text_color=GOLD,
+                                   left_action_items=[["shield-account", lambda x: None]],
+                                   right_action_items=[
+                                       ["bell-outline", lambda x: self.show_notifs()],
+                                       ["account-circle-outline", lambda x: self.profile_dialog()]])
+        root.add_widget(self.toolbar)
+        nav = MDBottomNavigation()
+        nav.panel_color = BLUE
+        nav.text_color_active = GOLD
+        nav.text_color_normal = (1, 1, 1, 0.65)
+        self.t_dash, self.b_dash = self.make_tab("dash", "Dashboard", "view-dashboard")
+        self.t_matches, self.b_matches = self.make_tab("matches", "O'yinlar", "soccer")
+        self.t_players, self.b_players = self.make_tab("players", "O'yinchilar", "account-group")
+        self.t_control, self.b_control = self.make_tab("control", "Boshqaruv", "cog")
+        for t in (self.t_dash, self.t_matches, self.t_players, self.t_control):
+            nav.add_widget(t)
+        root.add_widget(nav)
+        scr.add_widget(root)
+        return scr
+
+    def refresh_all(self):
+        self.update_toolbar()
+        self.refresh_dash()
+        self.refresh_matches()
+        self.refresh_players()
+        self.refresh_control()
 
     def build_extra_screens(self):
         self.sm.add_widget(LoginScreen(name="login", md_bg_color=NAVY))
