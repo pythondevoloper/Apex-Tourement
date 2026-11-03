@@ -8,4 +8,6 @@ uploads/
 
 # Maxfiy kalitlar — HECH QACHON commit qilinmaydi
 gemini_secret.py
-google-services.json
+
+# google-services.json — FAQAT push identifikatorlari (Android app'iga shim qilinadi,
+# Google dizayni bo'yicha maxfiy emas). Public repoda commit qilish xavfsiz.

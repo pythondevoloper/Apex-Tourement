@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "282101287609",
+    "firebase_url": "https://apex-league-2e8fc-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "apex-league-2e8fc",
+    "storage_bucket": "apex-league-2e8fc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:282101287609:android:a38881fbecfc4ae2632968",
+        "android_client_info": {
+          "package_name": "org.apex.apextournament"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCyxMsWGcKZOeMgTJoBZnFon_rS1jm_fag"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
