@@ -1,0 +1,83 @@
+APEX PRO LEAGUE - DO'STLAR UCHUN TANISHTIRUV VA FOYDALANISH TARTIBI
+
+============================================================
+1) QISQA TANISHTIRUV (do'stlarga yuborish uchun)
+============================================================
+
+Apex Pro League - futbol turniri uchun ilova.
+
+Do'stlar bilan ligaga/turnirga ro'yxatdan o'tamiz, jamoalar (guruhlar)
+tuzamiz, tarkib tanlaymiz, o'yin natijalarini kiritamiz - hammasi
+bulutda, ya'ni har bir telefonda bir vaqtda ko'rinadi.
+
+Nima qilsa bo'ladi:
+  - Jamoalar, kapitanlar, o'yinlar jadvali (guruh bosqichi + final)
+  - Har o'yinda gol, assist, almashtirish, sariq/qizil kartochka,
+    "Player of the Match"
+  - JADVAL va REYTINGLAR (bombardir, assist, ochkolar) - jonli yangilanadi
+  - APEX TOKEN tizimi - kech qolish/kelmaslik jarimasi, market orqali
+    narsa sotib olish
+  - Tarkibni maydon ko'rinishida, "eng yaxshi 6", o'yin jurnali
+
+Telefon: Android (APK). Internet kerak. Bepul.
+
+============================================================
+2) ROLLAR (uch xil ilova)
+============================================================
+
+  Apex Admin        - tashkilotchi (siz). Turnir ochadi, guruh/kapitan
+                      yaratadi, natija kiritadi, hamma narsani boshqaradi.
+
+  Apex Tournament   - o'yinchi / kapitan. Ro'yxatdan o'tadi, draft orqali
+  (player)            tarkib tanlaydi, market, bayonnoma.
+
+  Apex Referee      - hakam. O'yin paytida gol/assist kiritadi
+                      (hakamni admin tayinlaydi).
+
+============================================================
+3) ORNATISH
+============================================================
+
+  1. APK faylini telefonga o'rnating
+     (Sozlamalar > "Noma'lum manbalar / Unknown sources" ga ruxsat bering).
+  2. Har bir rol uchun o'z ilovasini qo'ying:
+     - o'yinchilarga  -> player APK
+     - hakamlarga     -> referee APK
+     - tashkilotchiga -> admin APK
+
+============================================================
+4) QADAM-BA-QADAM ISH TARTIBI
+============================================================
+
+  1. ADMIN ilovani ochadi -> email/parol bilan kiradi ->
+     "Turnirni boshlash" tugmasini bosadi.
+
+  2. O'YINCHILAR player ilovasida ism + familiya + o'yin raqami bilan
+     ro'yxatdan o'tadi.
+
+  3. ADMIN guruhlar (jamoalar) yaratadi va ro'yxatdan o'tganlardan
+     KAPITANni tayinlaydi, kapitanlarga PIN beradi.
+
+  4. DRAFT ochiladi -> kapitanlar navbatma-navbat o'yinchilarni
+     o'z jamoasiga tanlaydi.
+
+  5. ADMIN o'yinlar jadvalini yaratadi (guruh bosqichi, kerak bo'lsa final).
+
+  6. O'yin o'tadi -> ADMIN yoki HAKAM natijani, gollarni, kartochkalarni
+     kiritadi.
+
+  7. Hamma telefonlarda JADVAL, REYTING, TOKEN avtomatik yangilanadi
+     (taxminan 6 soniyada).
+
+============================================================
+5) MUHIM ESLATMALAR
+============================================================
+
+  - Hammasi INTERNET orqali ishlaydi (ma'lumot bulutda saqlanadi).
+    Oflaynda faqat oxirgi ko'rilgan ma'lumot chiqadi, o'zgartirish saqlanmaydi.
+
+  - PUSH BILDIRISHNOMA (xabar telefonga kelishi) Firebase sozlangach ishlaydi;
+    hozircha ilova ichidagi qo'ng'iroq belgisi (xabarnomalar) ishlaydi.
+
+  - Admin hisobi va Firebase loyihasi oldindan sozlangan bo'lishi shart
+    (buni faqat tashkilotchi - siz qilasiz).

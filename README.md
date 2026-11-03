@@ -27,14 +27,18 @@ Har qanday telefondagi o'zgarish 6 soniya ichida boshqa telefonlarda ko'rinadi.
 FIREBASE_DB_URL = "https://...firebaseio.com"   # 2-qadam
 FIREBASE_API_KEY = "AIza..."                     # 4-qadam
 ADMIN_EMAIL = "admin@example.com"                # 3-qadamdagi email
+GEMINI_API_KEY = ""                              # ixtiyoriy: AI rasm/video (5.2 bo'lim)
 ```
+
+> `GEMINI_API_KEY` bo'sh bo'lsa hammasi ishlaydi, faqat AI rasm/video funksiyalari o'chadi.
+> **Diqqat: haqiqiy kalitni GitHub ga PUSH QILMANG.**
 
 ## 3. GitHub
 
 Repozitoriy ildizida shu fayllar bo'lsin (eski `main.py` va `buildozer.spec` ni **o'chiring**):
 
 ```
-common.py  cloud.py  config.py  player.py  admin.py  referee.py
+common.py  cloud.py  config.py  gemini.py  player.py  admin.py  referee.py
 buildozer_player.spec  buildozer_admin.spec  buildozer_referee.spec
 version.json  requirements.txt
 trophy.png  icon.png  icon_admin.png  presplash.png  logo_1.png ... logo_12.png
@@ -216,3 +220,57 @@ o'tkazib yuboring — yuqoridagi bepul cron ham xuddi shu ishni bajaradi.
 > `google-services.json` bitta package name ga bog'lanadi. Oddiy yechim: uchalasini bitta
 > `google-services.json` ichida uchta `client` sifatida qo'shing yoki har build uchun almashtiring.
 > Barcha client'lar bitta `project_number`/sender_id ni bo'lishgani uchun topic push baribir ishlaydi.
+
+## v3 — Glassmorphism, oltin karta, AI (Gemini), mashq tahlili, yordamchilar
+
+### Dizayn
+Butun interfeys **glassmorphism** uslubiga o'tdi: binafsha→ko'k gradient fon, yarim shaffof
+shisha kartalar va ochiq chegara chiziqlari. **Apex Admin** endi butunlay **mustaqil ilova**:
+pastki navigatsiya **Dashboard / O'yinlar / O'yinchilar / Boshqaruv**.
+
+### Oltin o'yinchi kartasi + AI rasm
+Har bir o'yinchi kartasida **FC Mobile uslubidagi oltin karta** ko'rsatiladi: OVR, pozitsiya,
+familiya va 6 ta atribut — **TEZ(pac), ZAR(sho), PAS(pas), DRB(dri), HIM(def), JIS(phy)**.
+Yangi ro'yxatdan o'tgan o'yinchining atributlari **45-55** atrofidan boshlanadi, OVR shu
+atributlarning o'rtachasidan hisoblanadi.
+
+O'yinchi (yoki admin) kartada **Rasm yuklash** tugmasi bilan telefon rasmini tanlaydi. Agar
+Gemini kaliti kiritilgan bo'lsa, rasm AI orqali qayta ishlanadi: orqa fon olib tashlanadi,
+oltin karta foniga joylanadi va tiniqlashtiriladi (natija `card_b64` da saqlanadi). Kalit
+bo'lmasa oddiy rasm saqlanadi.
+
+### Gemini API (ixtiyoriy, lekin bepul)
+1. https://aistudio.google.com — **bepul** API kalit oling.
+2. `config.py` > `GEMINI_API_KEY = "..."` ga yozing. **Kalitni GitHub ga push qilmang!**
+   (`config.py` repo'ga kiritilgan — kalitni yozsangiz, uni commit qilmay turib APK quring.)
+3. `gemini.py` model nomlarini sozlash uchun `GEMINI_MODEL_IMAGE` / `GEMINI_MODEL_VIDEO`
+   qiymatlarini `config.py` da berish mumkin (standart: `gemini-2.5-flash-image`, `gemini-2.5-flash`).
+4. Kalit bo'lmasa barcha AI funksiyalari **jim no-op** — ilova yiqilmaydi.
+
+### Mashq videosi + gibrid OVR
+Admin > **O'yinchilar** > o'yinchi kartasi > **AI / Mashq**:
+- **Mashq videosi tahlili (AI)**: atributni tanlaysiz → qisqa video (<18MB) yuklaysiz →
+  Gemini 45-99 oralig'ida taklif beradi → admin **Tasdiqlash** yoki **Qo'lda** o'zgartiradi.
+- **Atributni qo'lda kiritish**: AI'siz to'g'ridan-to'g'ri 45-99 son kiritasiz.
+Video tahlili taxminiy va bepul kvota cheklangan — natijani har doim admin tasdiqlaydi.
+
+### Yordamchi (assistant) — admin huquqi
+Admin > **Boshqaruv** > **Yordamchilar (admin assistant)** > **Yordamchi yaratish**: ism, email,
+parol. Ilova Firebase Auth da yangi hisob yaratadi va uni `/assistants` ro'yxatiga qo'shadi.
+Yordamchi shu email/parol bilan **Apex Admin** ilovasiga kiradi va hamma narsani boshqara oladi.
+
+**Majburiy bitta qadam** (bitta marta): yangilangan `database.rules.json` ni Firebase ga
+deploy qiling yoki konsolda Realtime Database **Rules** da ildiz `.write` ni shunga almashtiring:
+
+```
+".write": "auth != null && (auth.uid === 'ADMIN_UID_SHU_YERGA' || root.child('assistants').child(auth.uid).exists())"
+```
+
+Bu `ADMIN_UID_SHU_YERGA` o'rniga o'z admin UID ingiz, yordamchi UID lari esa `/assistants` da
+avtomatik paydo bo'ladi. Yordamchini o'chirsangiz huquqi darhol bekor bo'ladi.
+
+### v3 release
+`VERSION_CODE = 3`, `version.json` > `"version": 3`, uchtala spec `version = 3.0`. APK qurish va
+reliz: teg push qiling — `git tag v3 && git push origin v3`. GitHub Actions APK larni yig'adi va
+**Releases** ga chiqaradi; ilova ichida yangilanish xabari avtomatik ko'rinadi.
+

@@ -1,7 +1,7 @@
 {
   "rules": {
     ".read": true,
-    ".write": "auth != null && auth.uid === 'ADMIN_UID_SHU_YERGA'",
+    ".write": "auth != null && (auth.uid === 'ADMIN_UID_SHU_YERGA' || root.child('assistants').child(auth.uid).exists())",
     "meta": {
       "turn": {
         ".write": "root.child('meta/is_draft_open').val() === true && newData.isNumber() && newData.val() === (data.exists() ? data.val() : 0) + 1"

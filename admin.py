@@ -242,6 +242,7 @@ class AdminMixin:
         ])
         self._admin_section(box, "Tizim", [
             ("Hakamlar boshqaruvi", self.admin_refs_menu),
+            ("Yordamchilar (admin assistant)", self.admin_assistants_menu),
             ("Market: narsa qo'shish / o'chirish", self.admin_market_menu),
             ("Admin parolini o'zgartirish", self.admin_change_pw),
             ("Chiqish", self.logout),
@@ -904,6 +905,96 @@ class AdminMixin:
                 toast("Hakam o'chirildi")
             self.refresh_all()
         self.choose_dialog("Qaysi hakam?", opts, chosen)
+
+    # ---------------- yordamchilar (admin assistant) ----------------
+    def admin_assistants_menu(self):
+        if not self.require_admin():
+            return
+        opts = [("Yordamchi yaratish", self.admin_assist_add),
+                ("Yordamchini o'chirish", self.admin_assist_del)]
+        self.choose_dialog("Yordamchilar", opts, lambda fn: fn())
+
+    def admin_assist_add(self):
+        """Admin o'ziga yordamchi hisob yaratadi: ism + email + parol.
+        Yordamchi shu email/parol bilan APEX ADMIN ilovasiga kiradi va hammasini boshqara oladi."""
+        if not self.require_admin():
+            return
+
+        def got_name(name):
+            if not name or not self.require_admin():
+                return
+
+            def got_email(email):
+                email = (email or "").strip().lower()
+                if "@" not in email:
+                    toast("To'g'ri email kiriting")
+                    return
+
+                def got_pw(pw):
+                    if len(pw) < 6:
+                        toast("Parol kamida 6 belgi bo'lsin")
+                        return
+                    self._assist_create_async(name, email, pw)
+                self.input_dialog("Parol", "Kamida 6 belgi (yordamchiga berasiz)",
+                                  got_pw, password=True)
+            self.input_dialog("Yordamchi email", "email@example.com", got_email)
+        self.input_dialog("Yordamchi ismi", "Ismi", got_name)
+
+    def _assist_create_async(self, name, email, pw):
+        toast("Hisob yaratilmoqda...")
+
+        def work():
+            try:
+                uid = self.fb.create_email_user(email, pw)
+            except CloudError as e:
+                Clock.schedule_once(lambda dt: toast("Xato: " + e.human()))
+                return
+            if not uid:
+                Clock.schedule_once(lambda dt: toast("Hisob yaratilmadi"))
+                return
+
+            def done(*a):
+                if not self.require_admin():
+                    return
+                if any(x["id"] == uid for x in self.d["assistants"]):
+                    toast("Bu hisob allaqachon bor")
+                    return
+                self.d["assistants"].append({"id": uid, "name": name, "email": email})
+                if self.store.save():
+                    toast("Yordamchi yaratildi. Endi u shu email/parol bilan Admin ilovasiga kirsin.")
+                self.refresh_all()
+            Clock.schedule_once(done, 0)
+        threading.Thread(target=work, daemon=True).start()
+
+    def admin_assist_del(self):
+        if not self.require_admin():
+            return
+        opts = [(f"{a['name']}  ({a.get('email', '')})", a["id"]) for a in self.d["assistants"]]
+        if not opts:
+            toast("Yordamchi yo'q")
+            return
+
+        def chosen(uid):
+            self.confirm_dialog(
+                "Yordamchini o'chirish",
+                "Huquq bekor qilinadi va Firebase Auth hisobi o'chiriladi. Davom?",
+                lambda: self._assist_delete(uid))
+        self.choose_dialog("Qaysi yordamchi?", opts, chosen)
+
+    def _assist_delete(self, uid):
+        if not self.require_admin():
+            return
+        self.d["assistants"] = [a for a in self.d["assistants"] if a["id"] != uid]
+        self.store.save()
+        self.refresh_all()
+
+        def work():
+            try:
+                self.fb.delete_email_user(uid)
+            except Exception:
+                pass
+            Clock.schedule_once(lambda dt: toast("Yordamchi o'chirildi"))
+        threading.Thread(target=work, daemon=True).start()
 
     # ---------------- market boshqaruvi (admin) ----------------
     def admin_market_menu(self):

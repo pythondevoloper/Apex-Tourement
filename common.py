@@ -48,6 +48,7 @@ from kivymd.uix.card import MDCard
 
 import config
 import push
+import gemini
 from cloud import Firebase, RemoteStore, CloudError, TOKEN_START
 
 LINEUP_SIZE = 6
@@ -64,7 +65,7 @@ PENALTY_NAMES = {c: n for c, n, _ in PENALTIES}
 RED_PENALTY = 50                 # qizil kartochka uchun avtomatik jarima
 TEAM_WIN_TOKENS = 200            # liga/final g'olibi jamoasiga APEX PRO TOKEN
 OVR_DECAY_DAYS = 2               # token 0 bo'lsa: har shuncha kunda OVR -1
-VERSION_CODE = 2                 # ilova versiyasi (version.json bilan solishtiriladi)
+VERSION_CODE = 3                 # ilova versiyasi (version.json bilan solishtiriladi)
 UPDATE_URL = getattr(config, "UPDATE_URL",
                      "https://raw.githubusercontent.com/pythondevoloper/Apex-Tourement/main/version.json")
 
@@ -284,8 +285,19 @@ def b64_to_path(key, b64):
     return p
 
 
-def pick_image_file(callback):
-    """callback(yo'l) ni tanlangan rasm fayli bilan chaqiradi. Android: fayl tanlagich, desktop: tkinter."""
+def shrink_b64(b64, size=420, quality=78):
+    """Base64 rasmni kichraytirib JPEG base64 ga o'giradi (Firebase uchun yengil)."""
+    from PIL import Image as PILImage
+    im = PILImage.open(io.BytesIO(base64.b64decode(b64)))
+    im = im.convert("RGB")
+    im.thumbnail((size, size))
+    buf = io.BytesIO()
+    im.save(buf, format="JPEG", quality=quality)
+    return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+def pick_media_file(mime, ext, title, callback):
+    """callback(yo'l) ni tanlangan media fayli bilan chaqiradi. Android: fayl tanlagich, desktop: tkinter."""
     try:
         from jnius import autoclass
         from android import activity
@@ -309,13 +321,13 @@ def pick_image_file(callback):
             stream.close()
             d = os.path.join(HERE, "uploads")
             os.makedirs(d, exist_ok=True)
-            p = os.path.join(d, "pick_tmp.jpg")
+            p = os.path.join(d, "pick_tmp." + ext)
             with open(p, "wb") as f:
                 f.write(buf.getvalue())
             callback(p)
         activity.bind(on_activity_result=on_result)
         intent = Intent(Intent.ACTION_GET_CONTENT)
-        intent.setType("image/*")
+        intent.setType(mime)
         activity.startActivityForResult(intent)
         return
     except Exception:
@@ -325,12 +337,29 @@ def pick_image_file(callback):
         from tkinter import filedialog
         root = tk.Tk()
         root.withdraw()
-        p = filedialog.askopenfilename(filetypes=[("Rasm", "*.png *.jpg *.jpeg")])
+        p = filedialog.askopenfilename(filetypes=[(title, "*." + ext)])
         root.destroy()
         if p:
             callback(p)
     except Exception:
-        toast("Rasm tanlab bo'lmadi")
+        toast("Fayl tanlab bo'lmadi")
+
+
+def pick_image_file(callback):
+    pick_media_file("image/*", "jpg", "Rasm", callback)
+
+
+def pick_video_file(callback):
+    pick_media_file("video/*", "mp4", "Video", callback)
+
+
+def video_to_b64(path, max_mb=18):
+    """Video faylni base64 ga o'giradi. Katta fayllarni rad etadi (Gemini cheklovi)."""
+    with open(path, "rb") as f:
+        data = f.read()
+    if len(data) > max_mb * 1024 * 1024:
+        raise ValueError("video juda katta")
+    return base64.b64encode(data).decode("ascii")
 
 
 def open_url(url):
@@ -1801,6 +1830,224 @@ class LeagueApp(MDApp):
         self.show_dialog("Qidiruv va filtr", content=content,
                          buttons=[MDFlatButton(text="Yopish", on_release=self.close_dialog)])
 
+    # ---------------- FC Mobile uslubidagi oltin o'yinchi kartasi ----------------
+    FC_ATTR_LABELS = [("pac", "TEZ"), ("sho", "ZAR"), ("pas", "PAS"),
+                      ("dri", "DRB"), ("def", "HIM"), ("phy", "JIS")]
+
+    def player_attrs(self, p):
+        """O'yinchi atributlari (yo'q bo'lsa standart 45-55 qiymatlar)."""
+        a = dict(gemini.DEFAULT_ATTRS)
+        for k, v in (p.get("attrs") or {}).items():
+            if k in a and isinstance(v, (int, float)):
+                a[k] = int(v)
+        return a
+
+    def fc_card_source(self, p):
+        """Kartadagi rasm: AI kartasi > oddiy foto > yo'q."""
+        for key in ("card_b64", "photo_b64"):
+            b = p.get(key)
+            if b:
+                try:
+                    return b64_to_path("p%s_%s" % (p["id"], key), b)
+                except Exception:
+                    pass
+        return None
+
+    def fc_card_widget(self, p):
+        attrs = self.player_attrs(p)
+        ovr = gemini.ovr_from_attrs(attrs)
+        ink = (0.14, 0.10, 0.02, 1)
+        card = MDCard(orientation="vertical", size_hint_y=None, height=dp(312),
+                      radius=[18], padding=dp(12), spacing=dp(8),
+                      md_bg_color=(0.74, 0.58, 0.14, 1))
+        top = MDBoxLayout(size_hint_y=None, height=dp(186), spacing=dp(10))
+        left = MDBoxLayout(orientation="vertical", size_hint_x=None, width=dp(98))
+        left.add_widget(MDLabel(text="[b]%d[/b]" % ovr, markup=True, font_style="H2",
+                                halign="center", theme_text_color="Custom", text_color=ink,
+                                size_hint_y=None, height=dp(58)))
+        left.add_widget(MDLabel(text="[b]%s[/b]" % (p.get("pos") or "-"), markup=True,
+                                halign="center", theme_text_color="Custom", text_color=ink,
+                                size_hint_y=None, height=dp(22)))
+        nm = (p.get("last") or p.get("name") or "").upper()[:12]
+        left.add_widget(MDLabel(text="[b]%s[/b]" % nm, markup=True, halign="center",
+                                font_style="Subtitle1", theme_text_color="Custom",
+                                text_color=ink, size_hint_y=None, height=dp(30)))
+        left.add_widget(Widget())
+        num = p.get("number")
+        left.add_widget(MDLabel(text="#%s" % (num if num else "-"), halign="center",
+                                theme_text_color="Custom", text_color=ink, font_style="Caption"))
+        top.add_widget(left)
+        src = self.fc_card_source(p)
+        if src:
+            top.add_widget(Image(source=src, allow_stretch=True, keep_ratio=True))
+        else:
+            ph = MDBoxLayout()
+            ph.add_widget(MDIcon(icon="account", font_size=dp(90), halign="center",
+                                 valign="middle", theme_text_color="Custom",
+                                 text_color=(0.2, 0.14, 0.03, 0.45)))
+            top.add_widget(ph)
+        card.add_widget(top)
+        grid = GridLayout(cols=2, spacing=dp(6), size_hint_y=None, height=dp(94))
+        for code, lbl in self.FC_ATTR_LABELS:
+            cell = MDBoxLayout(size_hint_y=None, height=dp(30), spacing=dp(4))
+            cell.add_widget(MDLabel(text="[b]%d[/b]" % attrs.get(code, 50), markup=True,
+                                    halign="right", theme_text_color="Custom", text_color=ink,
+                                    size_hint_x=None, width=dp(36)))
+            cell.add_widget(MDLabel(text=lbl, font_style="Caption",
+                                    theme_text_color="Custom", text_color=ink))
+            grid.add_widget(cell)
+        card.add_widget(grid)
+        _glass_border(card, radius=18, color=(0.95, 0.83, 0.45, 0.9), width=1.4)
+        return card
+
+    def player_photo_upload(self, pid):
+        """O'yinchi o'zi rasmini yuklaydi; kalit bo'lsa Gemini uni oltin kartaga aylantiradi."""
+        p = self.player(pid)
+        if not p:
+            return
+
+        def got(path):
+            try:
+                b64 = image_to_b64(path, size=420)
+            except Exception:
+                toast("Rasmni o'qib bo'lmadi")
+                return
+            p["photo_b64"] = b64
+            p["card_b64"] = None
+            if gemini.available():
+                toast("Rasm yuklandi. AI karta tayyorlanmoqda...")
+                self._gemini_card_async(p)
+            else:
+                self.store.save()
+                self.refresh_all()
+                toast("Rasm saqlandi. AI yoqilmagan (config.py da GEMINI_API_KEY bo'sh)")
+
+        self.close_dialog()
+        pick_image_file(got)
+
+    def _gemini_card_async(self, p):
+        b64 = p.get("photo_b64")
+
+        def work():
+            res = gemini.enhance_player_photo(b64)
+            img = None
+            if res and res.get("image_b64"):
+                try:
+                    img = shrink_b64(res["image_b64"], size=440)
+                except Exception:
+                    img = res["image_b64"]
+
+            def done(*a):
+                if img:
+                    p["card_b64"] = img
+                    toast("AI oltin karta tayyor!")
+                else:
+                    toast("AI kartani yasay olmadi; oddiy rasm saqlandi")
+                self.store.save()
+                self.refresh_all()
+
+            Clock.schedule_once(done, 0)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _apply_attr(self, pid, attr, score):
+        """Atributni 45-99 oralig'ida belgilaydi va OVR ni qayta hisoblaydi."""
+        p = self.player(pid)
+        if not p or attr not in gemini.ATTR_KEYS:
+            return
+        val = gemini.clamp_attr(score)
+        if val is None:
+            return
+        p.setdefault("attrs", dict(gemini.DEFAULT_ATTRS))[attr] = val
+        p["ovr"] = gemini.ovr_from_attrs(p["attrs"])
+        self.store.save()
+        self.refresh_all()
+        toast("%s = %d  (OVR %d)" % (attr.upper(), val, p["ovr"]))
+
+    def _attr_choice(self, pid, on_pick):
+        opts = [(lbl.upper() + "  (" + code + ")", code)
+                for code, lbl in self.FC_ATTR_LABELS]
+        self.choose_dialog("Qaysi atribut?", opts, lambda code: on_pick(pid, code))
+
+    def manual_attr(self, pid):
+        """Admin atributni qo'lda kiritadi (AI o'rniga yoki AI taklifini tekshirib)."""
+        def ask(pidx, code):
+            cur = self.player_attrs(self.player(pidx)).get(code, 50)
+
+            def got(val):
+                self._apply_attr(pidx, code, val)
+            self.input_dialog("Qo'lda: %s (%d-%d)" %
+                              (code.upper(), gemini.ATTR_MIN, gemini.ATTR_MAX),
+                              "Raqam kiriting (45-99)", got, text=str(cur), digits=True)
+        self._attr_choice(pid, ask)
+
+    def drill_video(self, pid):
+        """Mashq videosini yuklash -> kategoriya -> Gemini tahlili -> gibrid tasdiqlash."""
+        if not gemini.available():
+            toast("Gemini kaliti yo'q. Atributlarni 'OVR qo'lda' bilan kiriting.")
+            self.manual_attr(pid)
+            return
+
+        def pick_cat(code):
+            def got(path):
+                try:
+                    vb64 = video_to_b64(path)
+                except Exception:
+                    toast("Video o'qilmadi yoki juda katta (18MB gacha). Qisqa video tanlang.")
+                    return
+                self.close_dialog()
+                self._gemini_drill_async(pid, code, vb64)
+            self.close_dialog()
+            toast("Video tanlang...")
+            pick_video_file(got)
+
+        self._attr_choice(pid, pick_cat)
+
+    def _gemini_drill_async(self, pid, code, vb64):
+        lbl = dict(self.FC_ATTR_LABELS).get(code, code)
+
+        def work():
+            res = gemini.analyze_drill_video(vb64, code)
+
+            def done(*a):
+                if not res:
+                    toast("AI tahlil qila olmadi. Qo'lda kiriting.")
+                    manual_edit(pid, code, 50)
+                    return
+
+                def use_ai(*x):
+                    self.close_dialog()
+                    self._apply_attr(pid, code, res["score"])
+
+                content = MDBoxLayout(orientation="vertical", adaptive_height=True, spacing=dp(6))
+                content.add_widget(MDLabel(text="[b]%s[/b] uchun AI taklifi: [b]%d[/b]" %
+                                           (lbl, res["score"]), markup=True))
+                if res.get("note"):
+                    content.add_widget(MDLabel(text="AI izoh: " + res["note"], markup=True,
+                                               theme_text_color="Secondary"))
+                cur = self.player_attrs(self.player(pid)).get(code, 50)
+                content.add_widget(MDLabel(text="Hozirgi: %d" % cur, markup=True,
+                                           theme_text_color="Secondary"))
+
+                def edit(*x):
+                    self.close_dialog()
+                    manual_edit(pid, code, res["score"])
+
+                self.show_dialog("Mashq tahlili", content=content, buttons=[
+                    MDFlatButton(text="Bekor", on_release=self.close_dialog),
+                    MDFlatButton(text="Qo'lda", on_release=edit),
+                    MDRaisedButton(text="Tasdiqlash", on_release=use_ai)])
+
+            Clock.schedule_once(done, 0)
+
+        def manual_edit(pidx, code2, default):
+            def got(v):
+                self._apply_attr(pidx, code2, v)
+            self.input_dialog("%s qo'lda" % lbl, "Raqam (45-99)", got,
+                              text=str(default), digits=True)
+
+        threading.Thread(target=work, daemon=True).start()
+
     def player_card(self, pid):
         """O'yinchining shaxsiy kartochkasi."""
         p = self.player(pid)
@@ -1858,6 +2105,7 @@ class LeagueApp(MDApp):
         if g:
             head.add_widget(Image(source=self.logo_source(g), size_hint_x=None, width=dp(64)))
         inner = MDBoxLayout(orientation="vertical", adaptive_height=True, spacing=dp(6))
+        inner.add_widget(self.fc_card_widget(p))
         inner.add_widget(head)
         gold = (0.78, 0.57, 0, 1)
         badge = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(44),
@@ -1877,11 +2125,26 @@ class LeagueApp(MDApp):
         buttons = [MDFlatButton(text="Yopish", on_release=self.close_dialog),
                    MDFlatButton(text="Token tarixi",
                                 on_release=lambda *a: self.token_history(p["id"]))]
+        if p["id"] == self.my_pid() or self.ADMIN_APP:
+            buttons.append(MDFlatButton(
+                text="Rasm yuklash",
+                on_release=lambda *a: self.player_photo_upload(p["id"])))
+        if self.ADMIN_APP:
+            buttons.append(MDFlatButton(
+                text="AI / Mashq",
+                on_release=lambda *a: self._admin_attr_menu(p["id"])))
         if p["id"] == self.my_pid() and p["group"] and not p.get("tstatus"):
             buttons.append(MDRaisedButton(
                 text="Transfer listga so'rov",
                 on_release=lambda *a: (self.close_dialog(), self.transfer_request(p["id"]))))
         self.show_dialog(p["name"], content=sv, buttons=buttons)
+
+    def _admin_attr_menu(self, pid):
+        self.choose_dialog("O'yinchi atributlari",
+                           [("Mashq videosi tahlili (AI)", "drill"),
+                            ("Atributni qo'lda kiritish", "manual")],
+                           lambda kind: (self.drill_video(pid) if kind == "drill"
+                                         else self.manual_attr(pid)))
 
     # --- umumiy statistika jadvali (G va A alohida ustunlarda) ---
     STAT_COLS = [0.07, 0.30, 0.08, 0.08, 0.08, 0.08, 0.08, 0.08, 0.15]
@@ -2007,7 +2270,9 @@ class LeagueApp(MDApp):
         p = {"id": self.store.new_id(), "name": name, "first": first, "last": last,
              "group": None, "self_registered": True, "number": int(number),
              "pos": DEFAULT_POS, "country": DEFAULT_COUNTRY,
-             "tokens": TOKEN_START, "token_zero_since": None}
+             "tokens": TOKEN_START, "token_zero_since": None,
+             "attrs": dict(gemini.DEFAULT_ATTRS), "ovr": gemini.ovr_from_attrs(gemini.DEFAULT_ATTRS),
+             "photo_b64": None, "card_b64": None}
         self.d["players"].append(p)
         ok = self.store.save()
         if ok:

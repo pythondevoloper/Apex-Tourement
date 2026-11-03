@@ -4,7 +4,7 @@ package.name = apexreferee
 package.domain = org.apex
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,json
-version = 1.0
+version = 3.0
 
 # KivyMD 1.1.1 + Kivy 2.2.1 barqaror kombinatsiya
 requirements = python3,kivy==2.2.1,kivymd==1.1.1,pillow,openssl,certifi

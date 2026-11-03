@@ -27,8 +27,8 @@ except Exception:  # certifi yo'q bo'lsa tizim sertifikatlari
     _CTX = ssl.create_default_context()
 
 META_KEYS = ("setup_done", "is_draft_open", "turn")
-COLLECTIONS = ("groups", "players", "matches", "notifs", "transfers", "market", "refs")
-EXTRA = ("notifs", "transfers", "market", "refs")
+COLLECTIONS = ("groups", "players", "matches", "notifs", "transfers", "market", "refs", "assistants")
+EXTRA = ("notifs", "transfers", "market", "refs", "assistants")
 
 # APEX TOKEN: har bir o'yinchi ro'yxatdan o'tganda shuncha token oladi
 TOKEN_START = 500
@@ -119,6 +119,19 @@ class Firebase:
         self.expires = time.time() + int(res.get("expiresIn", "3600")) - 120
         self._password = new_password
 
+    # ---- yordamchi (assist) Firebase Auth hisobi ----
+    def create_email_user(self, email, password):
+        """Yangi email/parol hisobi yaratadi va uning uid sini qaytaradi (admin token shart emas)."""
+        url = "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=" + self.api_key
+        _, _, res = self._http("POST", url, {"email": email, "password": password,
+                                             "returnSecureToken": False})
+        return res.get("localId")
+
+    def delete_email_user(self, local_id):
+        """Firebase Auth hisobini o'chiradi (admin sessiyasi kerak)."""
+        url = "https://identitytoolkit.googleapis.com/v1/accounts:delete?key=" + self.api_key
+        self._http("POST", url, {"idToken": self._token(), "localId": local_id})
+
     def _token(self):
         if self.id_token and time.time() >= self.expires:
             if not self._password:
@@ -152,7 +165,7 @@ class Firebase:
 def empty_data():
     return {"setup_done": False, "is_draft_open": False, "turn": 0,
             "groups": [], "players": [], "matches": [],
-            "notifs": [], "transfers": [], "market": [], "refs": []}
+            "notifs": [], "transfers": [], "market": [], "refs": [], "assistants": []}
 
 
 def _clean(d, skip=()):
@@ -299,6 +312,12 @@ def from_remote(raw):
         r.setdefault("name", "")
         r.setdefault("pin_hash", None)
         data["refs"].append(r)
+    for v in _values(raw.get("assistants")):
+        a = dict(v)
+        a["id"] = str(a["id"])          # id = Firebase Auth uid (satr)
+        a.setdefault("name", "")
+        a.setdefault("email", "")
+        data["assistants"].append(a)
     for c in COLLECTIONS:
         data[c].sort(key=lambda x: x["id"])
     return data
