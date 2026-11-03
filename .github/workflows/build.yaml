@@ -44,9 +44,15 @@ jobs:
         run: |
           D=build_${{ matrix.app }}
           mkdir -p "$D"
-          cp common.py cloud.py config.py push.py trophy.png presplash.png logo_*.png "$D"/
+          cp common.py cloud.py config.py gemini.py push.py trophy.png presplash.png logo_*.png "$D"/
           cp ${{ matrix.app }}.py "$D"/main.py
           cp buildozer_${{ matrix.app }}.spec "$D"/buildozer.spec
+          # Gemini AI kaliti (ixtiyoriy): GitHub Secret GEMINI_API_KEY bo'lsa, uni
+          # gemini_secret.py sifatida APK ga joylaymiz. Bo'lmasa AI jim o'chadi.
+          if [ -n "${{ secrets.GEMINI_API_KEY }}" ]; then
+            printf '# -*- coding: utf-8 -*-\nGEMINI_API_KEY = "%s"\n' \
+              "${{ secrets.GEMINI_API_KEY }}" > "$D"/gemini_secret.py
+          fi
           # FCM uchun google-services.json (agar repo'da bo'lsa) — bo'lmasa push jim o'chadi
           if [ -f google-services.json ]; then
             cp google-services.json "$D"/google-services.json
