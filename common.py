@@ -191,8 +191,13 @@ def _glass_border(card, radius=None, color=(1, 1, 1, 0.16), width=1.0):
 
 
 def adaptive_card(**kw):
-    """Ichidagi elementlarga qarab balandligi o'zgaradigan kartochka (MDCard da adaptive_height yo'q)."""
-    card = MDCard(size_hint_y=None, **kw)
+    """Ichidagi elementlarga qarab balandligi o'zgaradigan kartochka (MDCard da adaptive_height yo'q).
+
+    size_hint_y chaqiruvchidan kelsa hurmat qilinadi (aks holda None): avval qattiq
+    berilgani uchun `size_hint_y=None` uzatgan joyda 'multiple values' xatosi chiqardi.
+    """
+    kw.setdefault("size_hint_y", None)
+    card = MDCard(**kw)
     card.bind(minimum_height=card.setter("height"))
     _glass_border(card)
     return card
