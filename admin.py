@@ -3,8 +3,9 @@
 from common import *
 
 
-class ClickCard(ButtonBehavior, MDCard):
-    """Bosiladigan shisha karta (dashboard 'action' kartalari uchun)."""
+class ClickCard(MDCard):
+    """Bosiladigan shisha karta (dashboard 'action' kartalari uchun).
+    MDCard allaqachon ButtonBehavior'dan meros olgan — on_release o'zida bor."""
     pass
 
 
