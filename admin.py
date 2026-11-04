@@ -138,7 +138,7 @@ class AdminMixin:
     def admin_hero(self):
         """Mockup uslubidagi yuqori banner: sarlavha + tavsif + Draft switch + 3 ta stat."""
         card = MDCard(orientation="vertical", size_hint_y=None, height=dp(180),
-                      radius=[18], md_bg_color=CARD, padding=dp(14), spacing=dp(10))
+                      radius=[18], md_bg_color=(1, 1, 1, 0.16), padding=dp(14), spacing=dp(10))
         top = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(58),
                           spacing=dp(8))
         left = MDBoxLayout(orientation="vertical", spacing=dp(2))
@@ -176,7 +176,7 @@ class AdminMixin:
                                     theme_text_color="Custom", text_color=(1, 1, 1, 0.6)))
             stats.add_widget(cell)
         card.add_widget(stats)
-        _glass_border(card, radius=18, color=(1, 1, 1, 0.20), width=1.2)
+        glass_style(card, radius=18, accent=ACCENTS[4], fill=(1, 1, 1, 0.16))
         return card
 
     def _admin_section(self, box, title, actions):

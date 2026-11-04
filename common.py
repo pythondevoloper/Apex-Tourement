@@ -215,18 +215,56 @@ ACCENTS = [
 ]
 
 
+def glass_style(card, radius=16, accent=None, fill=(1, 1, 1, 0.15),
+                border=(1, 1, 1, 0.34)):
+    """Kuchaytirilgan shisha ko'rinish: yarim-shaffof to'ldirish + nurli oq chegara
+    + ixtiyoriy accent rangli ichki glow (mockup 'liquid glass' uchun)."""
+    try:
+        card.md_bg_color = fill
+    except Exception:
+        pass
+    _glass_border(card, radius=radius, color=border, width=1.5)
+    if accent:
+        st = {"l": None}
+
+        def _g(*a):
+            w, h = card.width, card.height
+            if w <= 1 or h <= 1:
+                return
+            ins = dp(2.0)
+            rr = min(radius, w / 2, h / 2)
+            if st["l"] is None:
+                with card.canvas.after:
+                    Color(accent[0], accent[1], accent[2], 0.5)
+                    st["l"] = Line(width=dp(1.3), rounded_rectangle=(
+                        card.x + ins, card.y + ins, w - 2 * ins, h - 2 * ins, rr))
+            else:
+                st["l"].rounded_rectangle = (card.x + ins, card.y + ins,
+                                             w - 2 * ins, h - 2 * ins, rr)
+        card.bind(pos=_g, size=_g)
+        _g()
+
+
 def circle_icon(icon, color, d=46, icon_color=(1, 1, 1, 1)):
-    """Rangli doira ichida markazlashtirilgan ikonka (mockup 'action' kartasi uchun)."""
+    """Rangli doira-ikonka + ortida yumshoq glow (mockup 'action' kartasi uchun)."""
     box = MDBoxLayout(size_hint=(None, None), size=(dp(d), dp(d)),
                       pos_hint={"center_y": 0.5})
+    a = color[3] if len(color) > 3 else 1
     with box.canvas.before:
-        c = Color(color[0], color[1], color[2], color[3] if len(color) > 3 else 1)
-        ell = Ellipse(pos=box.pos, size=box.size)
+        Color(color[0], color[1], color[2], 0.28)
+        glow = Ellipse(pos=box.pos, size=box.size)
+        Color(color[0], color[1], color[2], a)
+        solid = Ellipse(pos=box.pos, size=box.size)
 
-    def _mv(*a):
-        ell.pos = box.pos
-        ell.size = box.size
+    def _mv(*a2):
+        cx, cy = box.center
+        s = box.size[0]
+        glow.size = (s * 1.7, s * 1.7)
+        glow.pos = (cx - s * 0.85, cy - s * 0.85)
+        solid.size = (s, s)
+        solid.pos = (box.x, box.y)
     box.bind(pos=_mv, size=_mv)
+    _mv()
     box.add_widget(MDIcon(icon=icon, theme_text_color="Custom", text_color=icon_color,
                           font_size=dp(24), size_hint=(None, None), size=(dp(d), dp(d)),
                           halign="center", valign="center"))
@@ -234,23 +272,24 @@ def circle_icon(icon, color, d=46, icon_color=(1, 1, 1, 1)):
 
 
 def make_action_card(icon, title, subtitle, cb, accent=None, height=88):
-    """Bosiladigan shisha 'action' karta: rangli doira-ikonka + sarlavha + tavsif + chevron."""
+    """Bosiladigan kuchaytirilgan shisha 'action' karta: glow-ikonka + sarlavha +
+    tavsif + chevron + accent nurli chegara."""
     accent = accent or ACCENTS[0]
     card = MDCard(orientation="horizontal", size_hint_y=None, height=dp(height),
-                  radius=[16], md_bg_color=CARD, padding=dp(10), spacing=dp(10))
+                  radius=[16], md_bg_color=(1, 1, 1, 0.15), padding=dp(10), spacing=dp(10))
     card.size_hint_x = 1          # BoxLayout ustunida teng kenglik olishi uchun
     card.bind(on_release=lambda *a: cb())
     card.add_widget(circle_icon(icon, accent))
     col = MDBoxLayout(orientation="vertical", spacing=dp(2))
     col.add_widget(MDLabel(text="[b]%s[/b]" % title, markup=True, font_style="Subtitle2",
-                           theme_text_color="Custom", text_color=(1, 1, 1, 0.95)))
+                           theme_text_color="Custom", text_color=(1, 1, 1, 0.96)))
     col.add_widget(MDLabel(text=subtitle, font_style="Caption", theme_text_color="Custom",
-                           text_color=(1, 1, 1, 0.55)))
+                           text_color=(1, 1, 1, 0.62)))
     card.add_widget(col)
     card.add_widget(MDIcon(icon="chevron-right", theme_text_color="Custom",
-                           text_color=(1, 1, 1, 0.35), size_hint=(None, None),
+                           text_color=(1, 1, 1, 0.42), size_hint=(None, None),
                            size=(dp(22), dp(22)), pos_hint={"center_y": 0.5}))
-    _glass_border(card, radius=16, color=(1, 1, 1, 0.18), width=1.2)
+    glass_style(card, radius=16, accent=accent)
     return card
 
 
@@ -305,6 +344,17 @@ class GradientBackground(Widget):
                 t = i / (n - 1)          # 0 = past (c_bot), 1 = yuqori (c_top)
                 Color(r1 + (r0 - r1) * t, g1 + (g0 - g1) * t, b1 + (b0 - b1) * t, 1)
                 Rectangle(pos=(self.x, self.y + h * i), size=(self.width, h + 0.6))
+            # Yumshoq nur dog'lari (glassmorphism 'liquid' effekti uchun).
+            blobs = [(0.18, 0.82, ACCENTS[0]), (0.86, 0.66, ACCENTS[1]),
+                     (0.5, 0.12, ACCENTS[4]), (0.9, 0.2, ACCENTS[5])]
+            for fx, fy, col in blobs:
+                cx = self.x + self.width * fx
+                cy = self.y + self.height * fy
+                R = self.width * 0.55
+                for k in range(6, 0, -1):
+                    rr = R * k / 6.0
+                    Color(col[0], col[1], col[2], 0.05)
+                    Ellipse(pos=(cx - rr, cy - rr), size=(rr * 2, rr * 2))
 
 
 class LogoButton(ButtonBehavior, Image):
