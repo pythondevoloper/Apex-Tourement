@@ -184,7 +184,7 @@ class AdminMixin:
         box.add_widget(self.header(title))
         for text, cb in actions:
             b = MDRaisedButton(text=text, size_hint_x=1, size_hint_y=None, height=dp(48),
-                               md_bg_color=BLUE, specific_text_color=GOLD)
+                               md_bg_color=BLUE, theme_text_color="Custom", text_color=GOLD)
             b.bind(on_release=lambda *a, fn=cb: fn())
             box.add_widget(b)
         box.add_widget(Widget(size_hint_y=None, height=dp(10)))
