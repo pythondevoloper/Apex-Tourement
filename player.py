@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Apex Tournament - O'YINCHILAR ilovasi (ro'yxatdan o'tish, draft, tarkib, jadval)."""
+"""Apex Tournament - O'YINCHILAR ilovasi (ro'yxatdan o'tish, guruh, tarkib, jadval)."""
 from common import *
 
 

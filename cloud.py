@@ -4,7 +4,7 @@ Firebase Realtime Database (REST) mijozi va umumiy ma'lumot ombori.
 
 Ma'lumotlar bazadagi tuzilishi (hammasi id bo'yicha alohida tugunlar):
   /meta      {setup_done, is_draft_open, turn}
-  /groups    /<gid>  {id, name, captain_id, pin_hash}
+  /groups    /<gid>  {id, name, captain_id, cap_login, cap_pass_hash}
   /players   /<pid>  {id, name, group, self_registered}
   /matches   /<mid>  {id, home, away, hs, as, lineup_locked, motm_admin, goals[], subs[], cards[]}
   /lineups   /<mid>/<gid>  [pid, ...]
@@ -239,7 +239,8 @@ def from_remote(raw):
         g = dict(v)
         g["id"] = int(g["id"])
         g["captain_id"] = _i(g.get("captain_id"))
-        g.setdefault("pin_hash", None)
+        g.setdefault("cap_login", None)
+        g.setdefault("cap_pass_hash", None)
         g["logo"] = _i(g.get("logo"))
         g.setdefault("logo_img", None)
         g["ptokens"] = int(g.get("ptokens", 0) or 0)

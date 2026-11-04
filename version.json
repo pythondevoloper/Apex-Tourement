@@ -1,5 +1,5 @@
 {
-  "version": 4,
-  "note": "APEX ADMIN dashboard endi 2-ustunli action-kartalar to'rida (vada qilingan maket uslubi); boshqaruv tugmalari va qolgan tablar (O'yinlar/O'yinchilar/Boshqaruv) to'liq ko'rinadi. Glassmorphism dizayn, FC Mobile oltin karta + Gemini AI rasm/mashq tahlili, admin yordamchilari.",
+  "version": 5,
+  "note": "APEX CAPTAIN — kapitanlar uchun alohida ilova (login va parolni admin beradi: Sozlamalar > Kapitan loginlari). Tarkib, transfer muzokarasi va Market xaridlari endi shu ilovada; Apex Tournament o'yinchi uchun shaxsiy (o'z kartasi, token, xabarnoma, jadval va narxlar). Yangi: jamoa shakli kvotasi (1 GK / 2 DF / 1 MF / 2 FW, MF va FW o'rin almashadi) va o'yinchini bazadan to'liq (kaskad) o'chirish.",
   "url": "https://github.com/pythondevoloper/Apex-Tourement/releases/latest"
 }

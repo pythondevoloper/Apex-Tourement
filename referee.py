@@ -4,38 +4,34 @@ from common import *
 
 
 class RefLoginScreen(MDScreen):
-    """Hakam kirishi: admin bergan ism + PIN."""
+    """Hakam kirishi: admin bergan ism + PIN (glass prototip uslubi)."""
 
     def __init__(self, **kw):
         super().__init__(**kw)
-        self.add_widget(GradientBackground())     # glassmorphism gradient fon (kontent ortida)
-        sv = ScrollView()
-        box = MDBoxLayout(orientation="vertical", adaptive_height=True, padding=dp(24),
-                          spacing=dp(12))
-        box.add_widget(Image(source=TROPHY, size_hint_y=None, height=dp(140)))
-        box.add_widget(MDLabel(text="Apex Referee", font_style="H4", halign="center",
-                               theme_text_color="Custom", text_color=GOLD,
-                               size_hint_y=None, height=dp(48)))
-        box.add_widget(MDLabel(text="Hakam hisobi bilan kiring (ism va PIN ni admin beradi)",
-                               halign="center", font_style="Caption",
-                               theme_text_color="Secondary", size_hint_y=None, height=dp(24)))
-        card = adaptive_card(orientation="vertical", radius=[16], md_bg_color=CARD,
-                             padding=dp(14), spacing=dp(6))
-        self.ref_name = MDTextField(hint_text="Hakam ismi", icon_left="whistle")
-        self.pw = MDTextField(hint_text="PIN", password=True, input_filter="int",
-                              icon_left="lock-outline")
+        root = FloatLayout()
+        root.add_widget(G.Background())
+        ui = G.BoxLayout(orientation="vertical", spacing=dp(14), padding=(dp(16), dp(20)))
+        ui.add_widget(G.TL("APEX [b]HAKAM[/b]", 20, align="center",
+                           size_hint_y=None, height=dp(34)))
+        ui.add_widget(G.note("Hakam hisobi bilan kiring (ism va PIN ni admin beradi).",
+                             size=11.5))
+        card = G.Glass(orientation="vertical", size_hint_y=None, spacing=dp(10),
+                       padding=(dp(16), dp(16)), radius=22)
+        card.bind(minimum_height=card.setter("height"))
+        self.ref_name = glass_field("Hakam ismi", max_len=30)
+        self.pw = glass_field("PIN", max_len=6, digits=True, password=True)
         card.add_widget(self.ref_name)
         card.add_widget(self.pw)
-        self.btn = MDRaisedButton(text="Kirish", size_hint_x=1, on_release=self.go)
-        card.add_widget(Widget(size_hint_y=None, height=dp(6)))
-        card.add_widget(self.btn)
-        box.add_widget(card)
-        sv.add_widget(box)
-        self.add_widget(sv)
+        ui.add_widget(card)
+        ui.add_widget(Widget())
+        self.btn = G.solid_button("Kirish", self.go, h=52, fill=G.GREEN, size=15)
+        ui.add_widget(self.btn)
+        root.add_widget(ui)
+        self.add_widget(root)
 
     def busy(self, flag):
         self.btn.disabled = flag
-        self.btn.text = "Kirilmoqda..." if flag else "Kirish"
+        self.btn.lbl.text = "Kirilmoqda..." if flag else "Kirish"
 
     def go(self, *a):
         MDApp.get_running_app().ref_login(self.ref_name.text, self.pw.text)
@@ -75,13 +71,17 @@ class RefereeApp(LeagueApp):
         toast(f"Xush kelibsiz, {r['name']}")
 
     def update_toolbar(self):
+        """Header pastdagi qator: hakam ismi + oflayn belgisi + yangi xabar nuqtasi."""
+        h = getattr(self, "pl_header", None)
+        if h is None:
+            return
         r = next((x for x in self.d["refs"] if x["id"] == self.ref_id), None)
-        self.toolbar.title = (self.TOOLBAR_NAME + (f" | {r['name']}" if r else "")
-                              + ("" if self.store.online else " | OFLAYN"))
-        bell = "bell-badge-outline" if self.unread_notifs() else "bell-outline"
-        self.toolbar.right_action_items = [
-            [bell, lambda x: self.show_notifs()],
-            ["account-circle-outline", lambda x: self.profile_dialog()]]
+        on = "" if self.store.online else "  ·  OFLAYN"
+        h.set_sub("%s%s" % (r["name"] if r else "Hisob kiritilmagan", on))
+        try:
+            h.set_dot(bool(self.unread_notifs()))
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

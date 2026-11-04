@@ -1,5 +1,5 @@
 # Joylashuvi: .github/workflows/build.yml
-# Uchta APK quradi: o'yinchi (player), admin (admin) va hakam (referee).
+# To'rtta APK quradi: o'yinchi (player), admin (admin), hakam (referee), kapitan (captain).
 # v* tegi bosilganda APK lar GitHub Release ga yuklanadi (ilova yangilanish xabari shu yerdan).
 name: Build APK
 
@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [player, admin, referee]
+        app: [player, admin, referee, captain]
     steps:
       - uses: actions/checkout@v4
 
@@ -44,7 +44,8 @@ jobs:
         run: |
           D=build_${{ matrix.app }}
           mkdir -p "$D"
-          cp common.py cloud.py config.py gemini.py push.py trophy.png presplash.png logo_*.png "$D"/
+          cp common.py cloud.py config.py gemini.py push.py glassui.py player_card.py \
+             trophy.png presplash.png logo_*.png "$D"/
           cp ${{ matrix.app }}.py "$D"/main.py
           cp buildozer_${{ matrix.app }}.spec "$D"/buildozer.spec
           # Gemini AI kaliti (ixtiyoriy): GitHub Secret GEMINI_API_KEY bo'lsa, uni

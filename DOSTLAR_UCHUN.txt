@@ -22,17 +22,26 @@ Nima qilsa bo'ladi:
 Telefon: Android (APK). Internet kerak. Bepul.
 
 ============================================================
-2) ROLLAR (uch xil ilova)
+2) ROLLAR (to'rt xil ilova)
 ============================================================
 
   Apex Admin        - tashkilotchi (siz). Turnir ochadi, guruh/kapitan
-                      yaratadi, natija kiritadi, hamma narsani boshqaradi.
+                      yaratadi, kapitanlarga login+parol beradi, natija
+                      kiritadi, hamma narsani boshqaradi.
 
-  Apex Tournament   - o'yinchi / kapitan. Ro'yxatdan o'tadi, draft orqali
-  (player)            tarkib tanlaydi, market, bayonnoma.
+  Apex Tournament   - O'YINCHI uchun shaxsiy ilova. Ro'yxatdan o'tadi
+  (player)            (ism, familiya, raqam, pozitsiya); o'z kartasi,
+                      statistikasi, APEX TOKEN, xabarnomalar, jadval va
+                      market narxlari (o'qish uchun).
+
+  Apex Captain      - JAMOA KAPITANI uchun alohida ilova. Login va parolni
+  (captain)           FAQAT admin beradi. Boshlang'ich 6 ni tanlaydi
+                      (shakl: 1 GK / 2 DF / 1 MF / 2 FW; MF va FW o'rin
+                      almashadi), jamoasini ko'radi, transfer muzokarasi
+                      yuritadi, marketdan jamoa tokeni bilan narsa oladi.
 
   Apex Referee      - hakam. O'yin paytida gol/assist kiritadi
-                      (hakamni admin tayinlaydi).
+                      (hakamni admin tayinlaydi, ism + PIN beradi).
 
 ============================================================
 3) ORNATISH
@@ -42,6 +51,7 @@ Telefon: Android (APK). Internet kerak. Bepul.
      (Sozlamalar > "Noma'lum manbalar / Unknown sources" ga ruxsat bering).
   2. Har bir rol uchun o'z ilovasini qo'ying:
      - o'yinchilarga  -> player APK
+     - kapitanlarga   -> captain APK
      - hakamlarga     -> referee APK
      - tashkilotchiga -> admin APK
 
@@ -52,21 +62,25 @@ Telefon: Android (APK). Internet kerak. Bepul.
   1. ADMIN ilovani ochadi -> email/parol bilan kiradi ->
      "Turnirni boshlash" tugmasini bosadi.
 
-  2. O'YINCHILAR player ilovasida ism + familiya + o'yin raqami bilan
-     ro'yxatdan o'tadi.
+  2. O'YINCHILAR player ilovasida ism + familiya + o'yin raqami +
+     pozitsiyasi (GK/DF/MF/FW) bilan ro'yxatdan o'tadi.
 
   3. ADMIN guruhlar (jamoalar) yaratadi va ro'yxatdan o'tganlardan
-     KAPITANni tayinlaydi, kapitanlarga PIN beradi.
-
-  4. DRAFT ochiladi -> kapitanlar navbatma-navbat o'yinchilarni
-     o'z jamoasiga tanlaydi.
+     KAPITANni tayinlaydi; har kapitan uchun LOGIN va PAROL yozadi
+     (Sozlamalar > Kapitan loginlari). Shu login/parolni kapitanga beradi.
+  4. ADMIN "Kvota bo'lishi" tugmasini bosadi -> barcha tanlanmagan
+     o'yinchilar jamoa shakliga qarab taqsimlanadi: har guruhga 1 GK,
+     2 DF, 1 MF, 2 FW (eng kuchli o'yinchilar zaifroq jamoalarga beriladi).
 
   5. ADMIN o'yinlar jadvalini yaratadi (guruh bosqichi, kerak bo'lsa final).
 
-  6. O'yin o'tadi -> ADMIN yoki HAKAM natijani, gollarni, kartochkalarni
+  6. KAPITAN captain ilovasida login/parol bilan kiradi va har o'yin uchun
+     boshlang'ich 6 ni belgilaydi (tarkib qulflanmaguncha o'zgartirsa bo'ladi).
+
+  7. O'yin o'tadi -> ADMIN yoki HAKAM natijani, gollarni, kartochkalarni
      kiritadi.
 
-  7. Hamma telefonlarda JADVAL, REYTING, TOKEN avtomatik yangilanadi
+  8. Hamma telefonlarda JADVAL, REYTING, TOKEN avtomatik yangilanadi
      (taxminan 6 soniyada).
 
 ============================================================
