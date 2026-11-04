@@ -42,9 +42,20 @@ common.py  cloud.py  config.py  gemini.py  push.py  glassui.py  player_card.py
 player.py  admin.py  referee.py  captain.py
 buildozer_player.spec  buildozer_admin.spec  buildozer_referee.spec  buildozer_captain.spec
 version.json  requirements.txt  database.rules.json
-trophy.png  icon.png  icon_admin.png  presplash.png  logo_1.png ... logo_12.png
+trophy.png  icon.png  icon_admin.png  icon_captain.png  icon_referee.png
+presplash.png  logo_1.png ... logo_12.png
 .github/workflows/build.yaml
 ```
+
+Ikonalar bitta oltin kubok rasminidan yig'iladi (`scripts/make_icons.py`):
+
+```
+python scripts/make_icons.py <kubok.jpg> band
+```
+
+`icon.png` — o'yinchi uchun yozuvsiz; qolgan uchta ikonaning pastida ko'mir rangli
+lentada **ADMIN / CAPTAIN / REFEREE** yozuvi. CI `icon_<app>.png` ni olib `icon.png`
+qilib qo'yadi, fayl bo'lmasa `icon.png` ga qaytadi.
 
 Yuklagach **Actions** da to'rtta build ishlaydi. Tugagach **Artifacts** dan APK larni yuklab oling:
 `apex-player-apk` (o'yinchilarga), `apex-captain-apk` (kapitanlarga), `apex-admin-apk` (faqat
