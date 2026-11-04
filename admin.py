@@ -1,13 +1,7 @@
 # -*- coding: utf-8 -*-
 """Apex Admin - ADMIN ilovasi. Faqat admin (Firebase Auth) kira oladi va o'zgartira oladi."""
 from common import *
-
-
-class ClickCard(MDCard):
-    """Bosiladigan shisha karta (dashboard 'action' kartalari uchun).
-    MDCard allaqachon ButtonBehavior'dan meros olgan — on_release o'zida bor."""
-    pass
-
+from common import _glass_border  # pastqi belgi: `import *` uni olib kirmaydi
 
 
 class SetupScreen(MDScreen):
@@ -141,31 +135,49 @@ class AdminMixin:
 
     # ---------------- Admin oynasi ----------------
     # ---------------- Admin ekranlari (mustaqil nav) ----------------
-    def action_card(self, icon, title, subtitle, cb, color=None):
-        """Mockup uslubidagi bosiladigan glass karta: ikonka + sarlavha + tavsif."""
-        card = ClickCard(orientation="horizontal", size_hint_y=None, height=dp(74),
-                         radius=[14], md_bg_color=CARD, padding=(dp(12), dp(6)), spacing=dp(10))
-        card.bind(on_release=lambda *a: cb())
-        card.add_widget(MDIcon(icon=icon, font_size=dp(26), theme_text_color="Custom",
-                               text_color=color or GOLD, size_hint=(None, None),
-                               size=(dp(44), dp(44)), pos_hint={"center_y": 0.5}))
-        col = MDBoxLayout(orientation="vertical", spacing=dp(1))
-        col.add_widget(MDLabel(text="[b]%s[/b]" % title, markup=True, font_style="Subtitle1",
-                               theme_text_color="Custom", text_color=(1, 1, 1, 0.95)))
-        col.add_widget(MDLabel(text=subtitle, font_style="Caption", theme_text_color="Custom",
-                               text_color=(1, 1, 1, 0.6)))
-        card.add_widget(col)
-        _glass_border(card, radius=14)
-        return card
+    def admin_hero(self):
+        """Mockup uslubidagi yuqori banner: sarlavha + tavsif + Draft switch + 3 ta stat."""
+        card = MDCard(orientation="vertical", size_hint_y=None, height=dp(180),
+                      radius=[18], md_bg_color=CARD, padding=dp(14), spacing=dp(10))
+        top = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(58),
+                          spacing=dp(8))
+        left = MDBoxLayout(orientation="vertical", spacing=dp(2))
+        left.add_widget(MDLabel(text="[b]Turnir boshqaruvi[/b]", markup=True, font_style="H5",
+                                theme_text_color="Custom", text_color=(1, 1, 1, 0.96)))
+        left.add_widget(MDLabel(text="Barcha jarayonlar nazoratingizda", font_style="Caption",
+                                theme_text_color="Custom", text_color=(1, 1, 1, 0.6)))
+        top.add_widget(left)
+        dcol = MDBoxLayout(orientation="vertical", size_hint_x=None, width=dp(92),
+                           spacing=0, pos_hint={"center_y": 0.5})
+        dcol.add_widget(MDLabel(text="Draft", halign="right", font_style="Caption",
+                                theme_text_color="Custom", text_color=(1, 1, 1, 0.7)))
+        sw = MDSwitch(active=self.d["is_draft_open"], pos_hint={"center_x": 0.55},
+                      size_hint=(None, None), size=(dp(50), dp(30)))
+        sw.bind(active=self.on_toggle_draft)
+        dcol.add_widget(sw)
+        top.add_widget(dcol)
+        card.add_widget(top)
 
-    def card_grid(self, items, cols=2, ch=74):
-        """items: [(icon, title, subtitle, cb[, color]), ...] — 2 ustunli kartalar to'ri."""
-        rows = (len(items) + cols - 1) // cols
-        g = GridLayout(cols=cols, spacing=dp(8), size_hint_y=None,
-                       height=dp(rows * ch + (rows - 1) * 8))
-        for it in items:
-            g.add_widget(self.action_card(*it))
-        return g
+        stats = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(56),
+                            spacing=dp(6))
+        for ic, val, lab in (("account-group", len(self.d["groups"]), "jamoa"),
+                             ("account", len(self.d["players"]), "o'yinchi"),
+                             ("soccer", len(self.d["matches"]), "o'yin")):
+            cell = MDBoxLayout(orientation="vertical", spacing=dp(1))
+            num = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(30),
+                              spacing=dp(4), pos_hint={"center_x": 0.5})
+            num.add_widget(MDIcon(icon=ic, theme_text_color="Custom", text_color=GOLD,
+                                  font_size=dp(20), size_hint=(None, None), size=(dp(24), dp(24)),
+                                  pos_hint={"center_y": 0.5}))
+            num.add_widget(MDLabel(text="[b]%d[/b]" % val, markup=True, font_style="H6",
+                                   theme_text_color="Custom", text_color=(1, 1, 1, 0.95)))
+            cell.add_widget(num)
+            cell.add_widget(MDLabel(text=lab, halign="center", font_style="Caption",
+                                    theme_text_color="Custom", text_color=(1, 1, 1, 0.6)))
+            stats.add_widget(cell)
+        card.add_widget(stats)
+        _glass_border(card, radius=18, color=(1, 1, 1, 0.20), width=1.2)
+        return card
 
     def _admin_section(self, box, title, actions):
         """Sarlavha + to'la kenglikdagi shisha tugmalar guruhi (balandlik qo'yilgan)."""
@@ -180,40 +192,10 @@ class AdminMixin:
     def refresh_dash(self):
         box = self.b_dash
         box.clear_widgets()
-        box.add_widget(self.hero("Admin panel"))
-        box.add_widget(self.note(
-            f"Kirgan hisob: {self.fb.email or '-'}. Barcha o'zgarishlar darhol "
-            "hamma telefonlarda ko'rinadi.", 44))
-
-        # Draft holati (switch)
-        dcard = adaptive_card(orientation="horizontal", size_hint_y=None, height=dp(56),
-                              radius=[12], md_bg_color=CARD, padding=(dp(14), 0), spacing=dp(8))
-        dcard.add_widget(MDLabel(text="[b]Draft holati[/b]", markup=True, theme_text_color="Custom",
-                                 text_color=(1, 1, 1, 0.9)))
-        dcard.add_widget(Widget())
-        sw = MDSwitch(active=self.d["is_draft_open"], pos_hint={"center_y": 0.5},
-                      size_hint=(None, None), size=(dp(52), dp(32)))
-        sw.bind(active=self.on_toggle_draft)
-        dcard.add_widget(sw)
-        box.add_widget(dcard)
-
-        # Statistika
-        stat = adaptive_card(orientation="horizontal", size_hint_y=None, height=dp(72),
-                             radius=[12], md_bg_color=CARD, padding=(dp(10), 0), spacing=dp(6))
-        for val, lab in ((len(self.d["groups"]), "Guruh"),
-                         (len(self.d["players"]), "O'yinchi"),
-                         (len(self.d["matches"]), "O'yin")):
-            col = MDBoxLayout(orientation="vertical")
-            col.add_widget(MDLabel(text=str(val), halign="center", font_style="H5",
-                                   theme_text_color="Custom", text_color=GOLD))
-            col.add_widget(MDLabel(text=lab, halign="center", font_style="Caption",
-                                   theme_text_color="Custom", text_color=(1, 1, 1, 0.7)))
-            stat.add_widget(col)
-        box.add_widget(stat)
-        box.add_widget(Widget(size_hint_y=None, height=dp(6)))
+        box.add_widget(self.admin_hero())
 
         box.add_widget(self.header("Tezkor boshqaruv"))
-        box.add_widget(self.card_grid([
+        box.add_widget(make_card_rows([
             ("account-group", "Guruhlar", "Jamossalarni boshqarish", self.admin_groups_menu),
             ("calendar-month", "Jadval yaratish", "O'yinlar jadvali", self.admin_make_fixtures),
             ("file-document-edit-outline", "Natija kiritish", "Hisob va gollar", self.admin_enter_result),
@@ -224,12 +206,13 @@ class AdminMixin:
             ("storefront", "Market", "Sovrin va buyumlar", self.admin_market_menu),
         ]))
         box.add_widget(self.header("Yana"))
-        box.add_widget(self.card_grid([
+        box.add_widget(make_card_rows([
             ("flag", "FINAL", "Final o'yini", self.admin_make_final),
             ("lock", "Kapitan PIN", "PIN o'rnatish", self.admin_set_pin),
             ("refresh", "Draft reset", "Noldan boshlash", self.admin_reset_draft),
             ("shield-account", "Yordamchilar", "Admin assistant", self.admin_assistants_menu),
-        ]))
+        ], accent0=2))
+        box.add_widget(Widget(size_hint_y=None, height=dp(10)))
 
     def refresh_matches(self):
         box = self.b_matches

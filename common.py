@@ -19,7 +19,7 @@ from kivy.base import ExceptionHandler, ExceptionManager
 from kivy.clock import Clock
 from kivy.metrics import dp
 from kivy.core.window import Window
-from kivy.graphics import Color, Rectangle, Line
+from kivy.graphics import Color, Rectangle, Line, Ellipse
 from kivy.uix.widget import Widget
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.behaviors import ButtonBehavior
@@ -202,6 +202,81 @@ def adaptive_card(**kw):
     card.bind(minimum_height=card.setter("height"))
     _glass_border(card)
     return card
+
+
+# ---------------- Mockup uslubidagi "action" kartalar (admin dashboard) ----------------
+ACCENTS = [
+    (0.55, 0.36, 0.96, 1),   # binafsha
+    (0.30, 0.55, 1.00, 1),   # ko'k
+    (0.20, 0.80, 0.70, 1),   # firuza
+    (0.95, 0.75, 0.25, 1),   # oltin
+    (0.30, 0.80, 1.00, 1),   # och ko'k
+    (0.95, 0.45, 0.70, 1),   # pushti
+]
+
+
+def circle_icon(icon, color, d=46, icon_color=(1, 1, 1, 1)):
+    """Rangli doira ichida markazlashtirilgan ikonka (mockup 'action' kartasi uchun)."""
+    box = MDBoxLayout(size_hint=(None, None), size=(dp(d), dp(d)),
+                      pos_hint={"center_y": 0.5})
+    with box.canvas.before:
+        c = Color(color[0], color[1], color[2], color[3] if len(color) > 3 else 1)
+        ell = Ellipse(pos=box.pos, size=box.size)
+
+    def _mv(*a):
+        ell.pos = box.pos
+        ell.size = box.size
+    box.bind(pos=_mv, size=_mv)
+    box.add_widget(MDIcon(icon=icon, theme_text_color="Custom", text_color=icon_color,
+                          font_size=dp(24), size_hint=(None, None), size=(dp(d), dp(d)),
+                          halign="center", valign="center"))
+    return box
+
+
+def make_action_card(icon, title, subtitle, cb, accent=None, height=88):
+    """Bosiladigan shisha 'action' karta: rangli doira-ikonka + sarlavha + tavsif + chevron."""
+    accent = accent or ACCENTS[0]
+    card = MDCard(orientation="horizontal", size_hint_y=None, height=dp(height),
+                  radius=[16], md_bg_color=CARD, padding=dp(10), spacing=dp(10))
+    card.size_hint_x = 1          # BoxLayout ustunida teng kenglik olishi uchun
+    card.bind(on_release=lambda *a: cb())
+    card.add_widget(circle_icon(icon, accent))
+    col = MDBoxLayout(orientation="vertical", spacing=dp(2))
+    col.add_widget(MDLabel(text="[b]%s[/b]" % title, markup=True, font_style="Subtitle2",
+                           theme_text_color="Custom", text_color=(1, 1, 1, 0.95)))
+    col.add_widget(MDLabel(text=subtitle, font_style="Caption", theme_text_color="Custom",
+                           text_color=(1, 1, 1, 0.55)))
+    card.add_widget(col)
+    card.add_widget(MDIcon(icon="chevron-right", theme_text_color="Custom",
+                           text_color=(1, 1, 1, 0.35), size_hint=(None, None),
+                           size=(dp(22), dp(22)), pos_hint={"center_y": 0.5}))
+    _glass_border(card, radius=16, color=(1, 1, 1, 0.18), width=1.2)
+    return card
+
+
+def make_card_rows(items, cols=2, height=88, spacing=8, accent0=0):
+    """items: [(icon, title, subtitle, cb), ...] — cols ustunli qatorlar (GridLayout emas).
+
+    GridLayout MDCard kengligini boshqara olmaydi (size_hint_y=None bo'lsa kartalar
+    ko'rinmay qoladi), shuning uchun har qatorni gorizontal MDBoxLayout qilamiz:
+    har karta size_hint_x=1 bilan teng bo'linadi.
+    """
+    rows = (len(items) + cols - 1) // cols
+    wrap = MDBoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(spacing),
+                       height=dp(rows * height + max(0, rows - 1) * spacing))
+    for i in range(0, len(items), cols):
+        row = MDBoxLayout(orientation="horizontal", size_hint_y=None,
+                          height=dp(height), spacing=dp(spacing))
+        chunk = items[i:i + cols]
+        for j, it in enumerate(chunk):
+            accent = ACCENTS[(accent0 + i + j) % len(ACCENTS)]
+            row.add_widget(make_action_card(it[0], it[1], it[2], it[3], accent, height))
+        for _ in range(cols - len(chunk)):
+            sp = Widget()
+            sp.size_hint_x = 1
+            row.add_widget(sp)
+        wrap.add_widget(row)
+    return wrap
 
 
 class GradientBackground(Widget):
