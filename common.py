@@ -56,6 +56,8 @@ POS_QUOTA = {"GK": 1, "DF": 2, "MF": 1, "FW": 2}
 # MF va FW o'zaro almashinadi: yarim himoyachi hujumda, hujumchi yarim himoyada
 # o'ynay oladi. GK va DF boshqa pozitsiyada o'ynamaydi.
 FLEX_SLOTS = ("MF", "FW")
+# Asosiy 6 talik shaklda nima yetishmayotganini ko'rsatish belgilari
+SHAPE_LABEL = {"GK": "Darvozabon", "DF": "Himoyachi", "FX": "MF yoki hujumchi"}
 LINEUP_SIZE = sum(POS_QUOTA.values())
 LINEUP_LOCK_MIN = 15   # o'yin boshlanishidan shuncha daqiqa oldin tarkib avtomatik qulflanadi
 CLOCK_HALF_MIN = 20    # hakam sekundomerida bir bo'lim davomiyligi (daqiqa)
@@ -83,6 +85,7 @@ POS_NAME = {c: n for n, c in POSITIONS}
 COUNTRIES = ["O'zbekiston", "Qozog'iston", "Qirg'iziston", "Tojikiston", "Turkmaniston",
              "Rossiya", "Turkiya", "Ozarbayjon", "Braziliya", "Argentina", "Portugaliya", "Ispaniya"]
 DEFAULT_COUNTRY, DEFAULT_NUMBER, DEFAULT_POS = "O'zbekiston", 10, "MF"
+MAX_NUMBER = 99          # futbolka raqami oralig'i: 1..99 (har jamoada noyob)
 BASE_OVR = 60          # admin o'zgartirmasa, boshlang'ich reyting
 LOGO_COUNT = 12        # logo_1.png ... logo_12.png
 
@@ -1356,6 +1359,45 @@ class LeagueApp(MDApp):
     def members(self, gid):
         return [p for p in self.d["players"] if p["group"] == gid]
 
+    # ---------------- futbolka raqami: har jamoada 1 raqam = 1 o'yinchi ----------------
+    def taken_numbers(self, gid, ignore_pid=None):
+        """Jamoadagi band raqamlar (ignore_pid hisobga olinmaydi)."""
+        return {p["number"] for p in self.members(gid)
+                if p["id"] != ignore_pid and p.get("number")}
+
+    def free_numbers(self, gid, count=4, ignore_pid=None):
+        """Jamoadagi eng kichik bir nechta bo'sh raqam (maslahat uchun)."""
+        taken = self.taken_numbers(gid, ignore_pid)
+        return [n for n in range(1, MAX_NUMBER + 1) if n not in taken][:count]
+
+    def free_number(self, gid, ignore_pid=None):
+        """Jamoadagi eng kichik bo'sh raqam; 1..99 band bo'lsa None."""
+        xs = self.free_numbers(gid, 1, ignore_pid)
+        return xs[0] if xs else None
+
+    def number_holder(self, gid, number, ignore_pid=None):
+        """Shu raqam jamoadagi egasi (bo'lmasa None)."""
+        return next((p for p in self.members(gid)
+                     if p["id"] != ignore_pid and p.get("number") == number), None)
+
+    def dup_numbers(self, gid=None):
+        """
+        Har jamoada 1 raqam 1 o'yinchida bo'lishi kerak, lekin kimningdir raqamini
+        biz bilmasdan o'zgartirmaymiz: takrorlarni admin ga ko'rsatamiz, u o'yinchilar
+        bilan kelishib raqamni o'zi beradi.
+        Qaytaradi: [(guruh_id, raqam, [o'yinchi, ...])].
+        """
+        out = []
+        for g in self.d["groups"]:
+            if gid is not None and g["id"] != gid:
+                continue
+            by = {}
+            for p in self.members(g["id"]):
+                if p.get("number"):
+                    by.setdefault(p["number"], []).append(p)
+            out += [(g["id"], n, ps) for n, ps in sorted(by.items()) if len(ps) > 1]
+        return out
+
     def name_exists(self, name, ignore_id=None):
         return any(p["name"].lower() == name.lower() and p["id"] != ignore_id
                    for p in self.d["players"])
@@ -1786,10 +1828,19 @@ class LeagueApp(MDApp):
         seller["ptokens"] += amt
         self.purge_from_lineups(p["id"])
         p["group"], p["tstatus"] = buyer["id"], None
+        clash = self.number_holder(buyer["id"], p.get("number"), p["id"]) if p.get("number") else None
         t.update(status="done", ts=now_ts())
         self.push_notif(f"p{p['id']}", f"Transfer yakunlandi: siz endi {buyer['name']} jamoasidasiz.")
         self.push_notif(f"g{seller['id']}", f"{p['name']} transfer qilindi: +{amt} APEX PRO TOKEN.")
         self.push_notif(f"g{buyer['id']}", f"{p['name']} jamoangizga qo'shildi: -{amt} APEX PRO TOKEN.")
+        if clash:
+            msg = ("%s jamoasida %s raqami ikki o'yinchida (siz va %s). Admin bilan kelishib "
+                   "birovingizning raqamingizni o'zgartiring — bo'sh raqamlar: %s." %
+                   (buyer["name"], p["number"], clash["name"],
+                    ", ".join(str(n) for n in self.free_numbers(buyer["id"], 4, p["id"]))))
+            self.push_notif(f"p{p['id']}", msg)
+            self.push_notif(f"g{buyer['id']}", msg)
+            self.push_notif(f"g{seller['id']}", msg)
         self.store.save()
         self.refresh_all()
 
@@ -2980,6 +3031,24 @@ class LeagueApp(MDApp):
             p = self.player(pid)
             code = ((p.get("pos") or "MF").upper() if p else "MF")
             out[code] = out.get(code, 0) + 1
+        return out
+
+    def shape_gaps(self):
+        """
+        Asosiy 6 tasi (1 GK / 2 DF / 1 MF / 2 FW) to'lmagan jamoalar.
+        MF va FW bir-birining o'rnini bosadi, shuning uchun ularni jami 3 deb olamiz.
+        Qaytaradi: [(guruh_id, {belgi: yetishmayotgan son})].
+        """
+        out = []
+        for g in self.d["groups"]:
+            c = self.pos_counts([p["id"] for p in self.members(g["id"])])
+            miss = {"GK": POS_QUOTA["GK"] - c.get("GK", 0),
+                    "DF": POS_QUOTA["DF"] - c.get("DF", 0),
+                    "FX": POS_QUOTA["MF"] + POS_QUOTA["FW"]
+                          - c.get("MF", 0) - c.get("FW", 0)}
+            miss = {k: v for k, v in miss.items() if v > 0}
+            if miss:
+                out.append((g["id"], miss))
         return out
 
     def shape_error(self, pids):

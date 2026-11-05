@@ -107,23 +107,27 @@ DIALOGS = {
                ("player_card", lambda a: (103,), "card_66"),
                ("player_card", lambda a: (301,), "card_58"),
                ("token_history", lambda a: (101,)), ("share_table_image", lambda a: ()),
-               ("_h2h_check", lambda a: ())],
+               ("_number_check", lambda a: ()), ("_h2h_check", lambda a: ())],
     "referee": [("show_notifs", lambda a: ()), ("player_card", lambda a: (101,)),
                 ("lineup_dialog", lambda a: (G1, 1)), ("match_journal", lambda a: (a.match(1),)),
                 ("clock_dialog", lambda a: ()), ("share_table_image", lambda a: ()),
-                ("_clock_check", lambda a: ()), ("_h2h_check", lambda a: ())],
+                ("_clock_check", lambda a: ()), ("_number_check", lambda a: ()),
+                ("_h2h_check", lambda a: ())],
     "captain": [("profile_dialog", lambda a: ()), ("show_notifs", lambda a: ()),
                 ("lineup_dialog", lambda a: (G1, 1)), ("captain_transfers", lambda a: ()),
                 ("negotiate_dialog", lambda a: (5,)), ("offer_dialog", lambda a: (202,)),
                 ("market_dialog", lambda a: ()), ("player_card", lambda a: (101,), "card_88"),
-                ("_cap_login_check", lambda a: ()), ("_lock_check", lambda a: ())],
+                ("_cap_login_check", lambda a: ()), ("_lock_check", lambda a: ()),
+                ("_number_check", lambda a: ())],
     "admin": [("admin_groups_menu", lambda a: ()), ("admin_goal_menu", lambda a: ()),
               ("admin_card_menu", lambda a: ()), ("admin_refs_menu", lambda a: ()),
               ("admin_market_menu", lambda a: ()), ("admin_enter_result", lambda a: ()),
               ("admin_wipe_all", lambda a: ()), ("admin_cap_logins", lambda a: ()),
               ("admin_remove_player", lambda a: ()),
               ("admin_lineup_manage", lambda a: ()), ("admin_backup_menu", lambda a: ()),
-              ("_split_check", lambda a: ()), ("_png_check", lambda a: ()),
+              ("shape_gap_dialog", lambda a: ()),
+              ("_number_check", lambda a: ()), ("_split_check", lambda a: ()),
+              ("_png_check", lambda a: ()),
               ("_lock_check", lambda a: ()), ("_h2h_check", lambda a: ()),
               ("_backup_check", lambda a: ()), ("_clock_check", lambda a: ()),
               # oxirida: bu ikkisi guruh/o'yinlarni o'chirib tashlaydi
@@ -223,7 +227,7 @@ def check_dialogs(app, kind, errors, done):
 
 
 def check_split(app, errors):
-    """Kvota bo'lishi: tasdiq dialogni avtomatik 'ha' qilib, guruh shaklini tekshiradi."""
+    """Kvota bo'lishi: avval har jamoaning asosiy 6 tasi, so'ng ortiqchalar teng son qilib."""
     from common import POS_QUOTA
     jobs, real = [], app.confirm_dialog
     app.confirm_dialog = lambda title, msg, cb, *a, **k: jobs.append(cb)
@@ -237,14 +241,39 @@ def check_split(app, errors):
     jobs[0]()
     if app.free_players():
         errors.append("kvota bo'lishi: %d o'yinchi guruhsiz qoldi" % len(app.free_players()))
+    if app.shape_gaps():
+        errors.append("asosiy 6: %d jamoda shakl to'lmadi (%s)"
+                      % (len(app.shape_gaps()), [(app.gname(g), m) for g, m in app.shape_gaps()]))
+    sizes = [len(app.members(g["id"])) for g in app.d["groups"]]
+    if max(sizes) - min(sizes) > 1:
+        errors.append("teng son: jamoalar soni farqi %s (1 dan ko'p bo'lmasligi kerak)" % sizes)
     for g in app.d["groups"]:
         c = app.pos_counts([p["id"] for p in app.members(g["id"])])
-        for pos, q in POS_QUOTA.items():
-            if c.get(pos, 0) < q:
-                errors.append("kvota %s: %s %d/%d" % (g["name"], pos, c.get(pos, 0), q))
-        print("  [admin] kvota %-8s %s jami=%d" %
+        print("  [admin] asosiy 6 %-8s %s jami=%d" %
               (g["name"], " ".join("%s%d" % (k, c.get(k, 0)) for k in POS_QUOTA),
                len(app.members(g["id"]))))
+    # asosiy 6 to'lmagan jamo ham aniqlanadi va ogohlantirish oynasi quriladi
+    gap_snap = _snap(app)
+    real_show = app.show_dialog
+    try:
+        gk = next(p for p in app.members(G1) if (p.get("pos") or "").upper() == "GK")
+        gk["pos"] = "MF"
+        gaps = app.shape_gaps()
+        if not any(g == G1 and "GK" in m for g, m in gaps):
+            errors.append("asosiy 6: darvozabonsiz jamo topilmadi (%s)" % gaps)
+        # MF va FW bir-birini bosadi: ularning yig'indisi 3 dan kam bo'lsa "FX" chiqadi
+        if any(g == G1 and "FX" in m for g, m in gaps):
+            errors.append("asosiy 6: MF/FW almashinuvi hisobga olinmadi (%s)" % gaps)
+        shown = []
+        app.show_dialog = lambda title, *a, **k: shown.append(title)
+        app.shape_gap_dialog()
+        if not shown or "Asosiy 6" not in shown[0]:
+            errors.append("asosiy 6: ogohlantirish oynasi ochilmadi (%s)" % shown)
+        print("  [admin] asosiy 6 yetishmovchiligi: %s, oyna=%s" %
+              (gaps[0][1] if gaps else {}, shown and shown[0]))
+    finally:
+        app.show_dialog = real_show
+        _restore(app, gap_snap)
 
 
 def check_cap_login(app, errors):
@@ -344,8 +373,10 @@ def _snap(app):
 
 
 def _restore(app, snap):
+    # nusxa bilan qaytaradi: aks holda app.d snap ichidagi obyektlarga alias bo'lib,
+    # keyingi o'zgarishlar snap ni buzadi (ikki marta restore qilish imkonsiz bo'lardi)
     app.d.clear()
-    app.d.update(snap)
+    app.d.update(copy.deepcopy(snap))
 
 
 def _need_match(app, mid):
@@ -526,6 +557,102 @@ def check_clock(app, errors):
             panel._ev.cancel()
 
 
+def check_number(app, errors):
+    """
+    Futbolka raqami: har jamoada 1 raqam = 1 o'yinchi.
+    Takror o'z-o'zidan o'zgarmaydi — admin ro'yxatni ko'radi, o'yinchilar bilan
+    kelishib raqamni o'zi beradi (band raqam esa qabul qilinmaydi).
+    """
+    from common import MAX_NUMBER
+    snap = _snap(app)
+    jobs = []
+    real_choose, real_input, real_confirm = app.choose_dialog, app.input_dialog, app.confirm_dialog
+    try:
+        if app.taken_numbers(G1) != {10, 5, 1}:
+            errors.append("raqam: band raqamlar %s (10, 5, 1 bo'lishi kerak)"
+                          % sorted(app.taken_numbers(G1)))
+        if app.free_number(G1) != 2 or app.free_numbers(G1, 4) != [2, 3, 4, 6]:
+            errors.append("raqam: bo'sh raqamlar %s / %s"
+                          % (app.free_number(G1), app.free_numbers(G1, 4)))
+        if not app.number_holder(G1, 10) or app.number_holder(G1, 10, 101):
+            errors.append("raqam: 10 raqami Alida — o'zini hisobga olmaganda topilmasligi kerak")
+        if app.dup_numbers():
+            errors.append("raqam: soxta ma'lumotda takror yo'q edi, %s chiqdi" % app.dup_numbers())
+        if not hasattr(app, "number_clash_dialog"):
+            print("  [%s] raqam yordamchilari: band=%s, bo'sh=%d" %
+                  (app.__class__.__name__, sorted(app.taken_numbers(G1)), app.free_number(G1)))
+            return
+
+        # ---- 1) takror yuzaga keldi: hech narsa o'zgarmaydi, admin ga ro'yxat chiqadi ----
+        app.player(103)["number"] = 5
+        dups = app.dup_numbers(G1)
+        if len(dups) != 1 or dups[0][1] != 5 or len(dups[0][2]) != 2:
+            errors.append("raqam: takror topilmadi (%s)" % [(g, n, len(p)) for g, n, p in dups])
+        app.choose_dialog = lambda title, opts, cb: jobs.append((title, opts, cb))
+        app.number_clash_dialog()
+        if not jobs or "Raqam takrorlari" not in jobs[0][0]:
+            errors.append("raqam: admin ga takror ro'yxati ochilmadi (%s)" % [j[0] for j in jobs])
+        else:
+            row_title, row_opts, row_cb = jobs[-1]
+            if len(row_opts) != 1 or "5 raqami" not in row_opts[0][0]:
+                errors.append("raqam: ro'yxat qatori noto'g'ri (%s)" % row_opts)
+            row_cb(row_opts[0][1])
+            if len(jobs[-1][1]) != 2 or "5 raqami" not in jobs[-1][0]:
+                errors.append("raqam: takrorlangan o'yinchilar ro'yxati ochilmadi (%s)"
+                              % jobs[-1][0])
+            pid = next(v for _, v in jobs[-1][1] if v == 103)
+            app.input_dialog = lambda title, hint, cb, *a, **k: jobs.append((title, hint, cb))
+            jobs[-1][2](pid)
+            ask_title, ask_hint, ask_cb = jobs[-1]
+            if "Bo'sh: 1, 2, 3, 4" not in ask_hint:
+                errors.append("raqam: bo'sh raqam maslahati yo'q (%s)" % ask_hint)
+            ask_cb(str(MAX_NUMBER + 1))
+            if app.player(103)["number"] != 5:
+                errors.append("raqam: %d (chegaradan tashqari) qabul qilindi" % (MAX_NUMBER + 1))
+            ask_cb("10")
+            if app.player(103)["number"] != 5:
+                errors.append("raqam: band 10 raqami qabul qilindi")
+            ask_cb("2")
+            if app.player(103)["number"] != 2 or app.dup_numbers():
+                errors.append("raqam: bo'sh 2 qabul bo'lmadi yoki takror qoldi")
+
+        # ---- 2) transfer: raqam o'zgarmaydi, faqat xabarnoma bor ----
+        app.player(102)["number"] = 9        # 9 raqami G2 da Javohirda
+        app.d["transfers"].append({"id": 777, "pid": 102, "status": "offer", "amount": 10,
+                                   "seller_gid": G1, "buyer_gid": G2, "side": "seller",
+                                   "ts": 1730000000, "msg": ""})
+        app.group(G2)["ptokens"] = 100
+        n0 = len(app.d["notifs"])
+        app.transfer_accept(777)
+        p = app.player(102)
+        if p["number"] != 9 or p["group"] != G2:
+            errors.append("raqam: transfer raqamni o'zgartirdi (%s) yoki jamoaga kirmadi (%s)"
+                          % (p["number"], p["group"]))
+        if not any("ikki o'yinchida" in x["text"] for x in app.d["notifs"][n0:]):
+            errors.append("raqam: transferdan keyin takror haqida xabar yo'q")
+        if len(app.dup_numbers(G2)) != 1:
+            errors.append("raqam: G2 dagi takror ro'yxatga kirmadi (%s)" % app.dup_numbers())
+
+        # ---- 3) kvota bo'lishi: takror tushsa ham raqamlar o'zgarishi taqiqlanadi ----
+        _restore(app, snap)
+        for q in app.free_players():
+            q["number"] = 10
+        jobs[:] = []
+        app.confirm_dialog = lambda title, msg, cb, *a, **k: cb()
+        app.admin_random_split()
+        if not any("Raqam takrorlari" in t for t, o, c in jobs):
+            errors.append("raqam: bo'lishdan keyin takror ro'yxati chiqmadi (%s)"
+                          % [j[0] for j in jobs])
+        if any(app.player(i)["number"] != 10 for i in (401, 402, 403)):
+            errors.append("raqam: bo'lish kimningdir raqamini o'zgartirdi")
+        print("  [admin] raqam: takror qatorlari=%s, G1 band=%s, G1 bo'sh=%s" %
+              ([o[0] for o in jobs[0][1]] if jobs else [],
+               sorted(app.taken_numbers(G1)), app.free_numbers(G1, 3)))
+    finally:
+        app.choose_dialog, app.input_dialog, app.confirm_dialog = real_choose, real_input, real_confirm
+        _restore(app, snap)
+
+
 def check_backup(app, errors):
     """Zaxira: JSON eksport, tekshiruv va tiklash (butun turnir almashtiriladi)."""
     snap = _snap(app)
@@ -624,6 +751,7 @@ SENTINELS = {"_split_check": check_split,
              "_h2h_check": check_h2h,
              "_lock_check": check_lock,
              "_clock_check": check_clock,
+             "_number_check": check_number,
              "_backup_check": check_backup,
              "_png_check": check_png}
 

@@ -74,11 +74,19 @@ o'zingizda) va `apex-referee-apk` (hakamlarga).
    qo'shishda va kapitanni almashtirishda admin **kapitan logini va parolini** o'zi belgilaydi
    (masalan `guruh-a-17`, parol kamida 6 belgi) — shu ma'lumotni kapitan **Apex Captain** ilovasiga
    kirish uchun beradi. Keyin **«Kvota bo'lishi»** tugmasi bilan barcha so'rov (tanlanmagan)
-   o'yinchilarni **jamoa shakliga
-   qarab** taqsimlaydi: har guruhga **1 darvozabon, 2 himoyachi, 1 yarim himoyachi, 2 hujumchi**
-   (kapitanlar hisobga olinadi; keyin eng kuchli o'yinchilar zaifroq guruhlarga beriladi, har
-   guruhda maksimum 8 o'rin). Tugmani yangi so'rov kelganda qayta bosish mumkin, «Taqsimni
-   tozalash» bilan hammasini so'rov holatiga qaytarish mumkin. Shundan
+   o'yinchilarni **ikki bosqichda** taqsimlaydi:
+   1. **Avval har guruhning asosiy 6 tasi** to'ldiriladi — **1 darvozabon, 2 himoyachi,
+      1 yarim himoyachi, 2 hujumchi** (kapitanlar hisobga olinadi, MF va FW bir-birining o'rnini
+      bosadi). Kam topiladigan pozitsiyadan boshlanadi va eng kuchli o'yinchi ko'p joyi bo'lgan
+      guruhga beriladi.
+   2. **So'ng ortib qolgan o'yinchilar** jamoalar **soni teng** bo'ladigan qilib beriladi
+      (har guruhda maksimum **8 o'rin**). Sig'maganlar so'rov holatida qoladi va soni xabarda
+      aytiladi.
+
+   Asosiy 6 tasi to'lmagan guruh qolsa, bo'lishdan so'ng **«Asosiy 6 to'lmagan jamoalar»**
+   oynasi chiqadi (kimda nima yetishmaydi va nima qilish mumkin). Tugmani yangi so'rov kelganda
+   qayta bosish mumkin, «Taqsimni tozalash» bilan hammasini so'rov holatiga qaytarish mumkin.
+   Shundan
    keyin o'yinchilar ilovadan to'liq foydalana oladi. Admin o'yinlar jadvalini yaratadi,
    gol/assist/kartochka kiritadi.
    (Admin o'yinchi **yaratmaydi** — o'yinchilar faqat o'zlari ro'yxatdan o'tadi.)
@@ -108,6 +116,19 @@ o'ynaydi (shuning uchun MF+FW birga 3 ta deb sanaladi). **GK va DF boshqa pozits
 o'ynamaydi.** Tarkib oynasida har qator pozitsiyasi bilan ko'rsatiladi va tepada jonli
 sanog' («Darvozabon 1/1 · Himoyachi 1/2 · MF+FW 3/3») boradi; «Eng yaxshi 6» shaklni buzmasdan
 eng yuqori OVR yig'adi. Saqlashda qoida qayta tekshiriladi — shakl buzilgan bo'lsa saqlanmaydi.
+
+**Futbolka raqami — har jamoada 1 raqam = 1 o'yinchi.** Raqam 1 dan 99 gacha, o'yinchi ro'yxatdan
+o'tganda kiritadi. Bir raqam turli jamoalarda bo'lishi mumkin, lekin **bitta jamoada ikki kishida
+bo'lmaydi**. Kimningdir raqamini biz bilmasdan o'zgartirmaymiz:
+- **Kvota bo'lishi** («Tasodifiy bo'lish») bir jamoaga takror raqam tushirsa, bo'lish tugadi-da,
+  admin ga **«Raqam takrorlari»** oynasi chiqadi: guruh, raqam va kimlarda ekani ko'rsatiladi.
+- **Transfer**dan keyin ham shunday: raqamlar o'zgarmaydi, sotuvchi/xaridor kapitanlari va
+  o'yinchiga «bu jamoada N raqami ikki o'yinchida — kelishib o'zgartiring» degan xabarnoma boradi.
+- Admin o'yinchilar bilan kelishgach **O'yinchilar → O'zgartirish → Futbolka raqami** da raqamni
+  o'zi beradi. Oynada **bo'sh raqamlar maslahati** yozilgan bo'ladi; band raqam kiritilsa
+  rad etiladi («10 raqami Guruh A jamoida Ali Valiyev da band»).
+- Doimiy nazorat: **Boshqaruv** dagi «Raqam takrorlari» kartasi va **Sozlamalar → Raqam
+  takrorlari** qatori sonini ko'rsatib turadi («yo'q» bo'lsa hamma narsa tartibda).
 
 **Ma'lumotni noldan boshlash:** Admin → **Sozlamalar → Guruh va o'yinchilarni o'chirish** — barcha
 guruhlar, o'yinchilar va ularga bog'liq o'yinlar/tarkiblar/transferlar/xabarnomalar bazadan o'chadi
@@ -370,7 +391,8 @@ reliz: teg push qiling — `git tag v3 && git push origin v3`. GitHub Actions AP
   tokenlar, xabarnomalar, jadval va Market/narxlarni **o'qish** uchun. Tarkib, transfer
   muzokarasi va xarid qilmaydi.
 - **Jamoa shakli**: `POS_QUOTA` (1 GK / 2 DF / 1 MF / 2 FW) endi uch joyda bitta qoida —
-  «Kvota bo'lishi», «Eng yaxshi 6» taklifi va tarkibni saqlash. MF va FW o'rin almashadi.
+  «Kvota bo'lishi» (v6 da bosqichlarga bo'lindi, quyida), «Eng yaxshi 6» taklifi va tarkibni
+  saqlash. MF va FW o'rin almashadi.
 - **O'yinchini o'chirish** (Admin → O'yinchilar): tasdiq oynasi qancha iz o'chishini sanab
   beradi, keyin tarkib/gol/assist/almashinuv/kartochka/davomat/MOTM/transfer/xabarnoma/token
   tarixi tozalanadi va gol ochlari qayta hisoblanadi. **Kapitan** bo'lsa, u o'chirilganda
@@ -409,6 +431,11 @@ Teg push qiling: `git tag v5 && git push origin v5`.
   shunda server qoidalari ham boshqa qurilmalarning yozuvini qaytaradi. Vaqt o'chirilsa
   qulf faqat qo'lab yoki natija orqali bo'ladi.
 - **Hakam sekundomeri** — "Hakam ilovasi" bo'limiga qarang.
+- **Kvota bo'lishi endi ikki bosqichda.** Avval **hamma** guruhning asosiy 6 tasi to'ldiriladi,
+  keyin ortiqchalar **teng son** qilib beriladi (max 8 o'rin). Sig'maganlar so'rovda qoladi va
+  sanaladi. `common.py` da `shape_gaps()` — asosiy 6 tasi to'lmagan guruhlar ro'yxati
+  (MF+FW birga 3 ta, shuning uchun «hujumchi yetishmaydi» deb asossiz qo'rqitmaydi), admin
+  panelida **«Asosiy 6 to'lmagan jamoalar»** oynasi bo'lishdan keyin avtomatik chiqadi.
 - **Jadvalni PNG qilib ulashish.** Jadval tab'ining boshidagi tugma jadvalni
   (guruhlar, o'zaro uchrashuv izohi, chempion, bombardirlar) shisha panelga yig'adi,
   ko'rib chiqish oynasini ochadi va **"PNG yuborish"** bilan 2× aniqlikdagi rasmga
@@ -427,5 +454,9 @@ sekundomer bazaga yozilmaydi.
 `python -u scripts/render_check.py all` endi bularni ham sinaydi: o'zaro uchrashuv tartibi
 (tugallanmagan klasterda qoida ishlatilmasligi bilan), avtomatik qulf (`kick` holatlari va
 bazaga yozish), sekundomer (bo'limlar, daqiqa, `clock.json`, panel), zaxira (yozish, o'qish,
-tiklash) va jadval PNG faylini.
+tiklash), jadval PNG faylini va futbolka raqami qoidasini (bo'sh raqam topish, takror ro'yxati,
+band raqam rad etilishi, taqsim/transfer raqamlarni o'zgartirmasligi). Kvota bo'lishi sinovi ham
+ikki bosqichni tekshiradi: hech kim so'rovda qolmaydi, hamma guruhda asosiy 6 ta to'liq
+(`shape_gaps()` bo'sh) va jamoalar soni 1 tadan ortiq farq qilmaydi; sun'iy ravishda darvozabonni
+MF ga o'zgartirib, «Asosiy 6» oynasining chiqishini ham sinaydi.
 

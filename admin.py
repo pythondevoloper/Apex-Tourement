@@ -11,6 +11,13 @@ import glassui as G  # main.py prototipidagi glass dizayn vidjetlari (saf Kivy c
 MAX_GROUP = 8        # har bir jamoada (kapitan bilan) maksimum o'yinchi soni
 
 
+def _dup_hint(dups):
+    """Dashboard kartasidagi qisqa holat matni: raqam takrorlari bormi."""
+    if not dups:
+        return "Barcha jamoalarda noyob"
+    return "%d jamoada takror — kelishib tuzating" % len({g for g, _, _ in dups})
+
+
 class SetupScreen(MDScreen):
     """Turnirni boshlash. Guruhlar soni so'ralmaydi: guruhlar keyin, Admin paneldan qo'shiladi."""
 
@@ -219,6 +226,8 @@ class AdminMixin:
             ("cart-outline", "Market", "Sovrinlar va buyumlar", hx("#6D5BFF"), self.admin_market_menu),
             ("shuffle", "Kvota bo'lishi", "1 GK / 2 DF / 1 MF / 2 FW", hx("#0EA5E9"),
              self.admin_random_split),
+            ("numeric", "Raqam takrorlari", _dup_hint(self.dup_numbers()),
+             hx("#F59E0B"), self.number_clash_dialog),
             ("restore", "Taqsimni tozalash", "Qayta bo'lish uchun", hx("#EF4444"), self.admin_reset_split),
             ("delete-forever-outline", "O'yinchini o'chirish", "Baza bo'ylab izlari bilan",
              hx("#F87171"), self.admin_remove_player),
@@ -347,6 +356,9 @@ class AdminMixin:
                            str(sum(1 for m in self.d["matches"] if self.lineup_closed(m)))
                            + "/" + str(len(self.d["matches"])) + " qulflangan",
                            self.admin_lineup_manage),
+            self._link_row("Raqam takrorlari",
+                           "yo'q" if not self.dup_numbers() else "%d ta" % len(self.dup_numbers()),
+                           self.number_clash_dialog),
             self._link_row("Hakamlar", str(len(self.d["refs"])), self.admin_refs_menu),
             self._link_row("Yordamchilar", str(len(self.d["assistants"])), self.admin_assistants_menu),
             self._link_row("Market", str(len(self.d["market"])), self.admin_market_menu),
@@ -620,14 +632,7 @@ class AdminMixin:
                 self.refresh_all()
 
             def set_number():
-                def cb(t):
-                    if not (t.isdigit() and 1 <= int(t) <= 99):
-                        toast("Raqam 1 dan 99 gacha bo'lsin")
-                        return
-                    p["number"] = int(t)
-                    done()
-                self.input_dialog("Futbolka raqami", "1-99", cb,
-                                  text=str(p.get("number") or ""), digits=True)
+                self.ask_number(pid)
 
             def set_pos():
                 def cb(code):
@@ -657,6 +662,74 @@ class AdminMixin:
                 ("Futbolka raqami", set_number), ("Pozitsiya", set_pos),
                 ("Davlat", set_country), ("Boshlang'ich OVR", set_ovr)], lambda fn: fn())
         self.choose_dialog("Qaysi o'yinchi?", opts, chosen)
+
+    def ask_number(self, pid):
+        """Futbolka raqami: jamoada band bo'lsa rad etiladi (1 raqam = 1 o'yinchi)."""
+        p = self.player(pid)
+        if not p or not self.require_admin():
+            return
+
+        def cb(t):
+            if not (t.isdigit() and 1 <= int(t) <= MAX_NUMBER):
+                toast("Raqam 1 dan %d gacha bo'lsin" % MAX_NUMBER)
+                return
+            clash = self.number_holder(p["group"], int(t), pid)
+            if clash:
+                toast("%d raqami %s jamoida %s da band — avval uning raqamini "
+                      "boshqaga o'zgartiring" % (int(t), self.gname(p["group"]), clash["name"]))
+                return
+            p["number"] = int(t)
+            if self.require_admin() and self.store.save():
+                toast("Saqlandi")
+            self.refresh_all()
+            rest = self.dup_numbers(p["group"])
+            if rest:
+                self.number_clash_dialog(rest)
+
+        free = ", ".join(str(n) for n in self.free_numbers(p["group"], 4, pid))
+        self.input_dialog("%s  ·  raqam" % p["name"],
+                          "1-%d, jamoada noyob bo'lsin. Bo'sh: %s" % (MAX_NUMBER, free), cb,
+                          text=str(p.get("number") or ""), digits=True)
+
+    def number_clash_dialog(self, dups=None):
+        """Takror raqamlar ro'yxati: qatorni bossa o'sha o'yinchining raqamini o'zgartiramiz."""
+        dups = self.dup_numbers() if dups is None else dups
+        if not dups:
+            self.show_dialog("Raqam takrorlari",
+                             text="Har jamoada barcha raqamlar noyob — tuzatish shart emas.")
+            return
+
+        def pick(item):
+            gid, num, ps = item
+            self.choose_dialog("%s  ·  %d raqami" % (self.gname(gid), num),
+                               [(f"{p['name']}  ({self.player_line(p)})", p["id"]) for p in ps],
+                               self.ask_number)
+
+        opts = [("%s  ·  %d raqami  ·  %s" %
+                 (self.gname(gid), num, " va ".join(x["name"].split()[0] for x in ps)),
+                 (gid, num, ps)) for gid, num, ps in dups]
+        self.choose_dialog(
+            "Raqam takrorlari: %d" % len(dups), opts, pick)
+
+    def shape_gap_dialog(self, gaps=None):
+        """Asosiy 6 tasi to'lmagan jamoalar: bo'lishdan keyin admin ko'radi (hech narsa to'xtamaydi)."""
+        gaps = self.shape_gaps() if gaps is None else gaps
+        if not gaps:
+            self.show_dialog("Asosiy tarkib shakli",
+                             text="Hamma jamoada asosiy 6 ta (1 GK / 2 DF / 1 MF / 2 FW) to'lgan.")
+            return
+        lines = []
+        for gid, miss in gaps:
+            lines.append("%s (%d kishi): %s" % (
+                self.gname(gid), len(self.members(gid)),
+                ", ".join("%s %d ta yetishmaydi" % (SHAPE_LABEL.get(k, k), v)
+                          for k, v in miss.items())))
+        self.show_dialog(
+            "Asosiy 6 to'lmagan jamoalar",
+            text="\n".join(lines) +
+                 "\n\nYechim: havuzada shu pozitsiyada o'yinchi bo'lsa «Kvota bo'lishi»ni "
+                 "qayta bosing, yoki O'yinchilar → O'zgartirish → Pozitsiya dan pozitsiyani "
+                 "o'zgartiring (MF va FW bir-birining o'rnini bosadi, GK va DF — yo'q).")
 
     def admin_rename_group(self):
         opts = [(g["name"], g["id"]) for g in self.d["groups"]]
@@ -690,6 +763,8 @@ class AdminMixin:
                     self.store.save()
                     self.refresh_all()
                     toast("Kapitan almashtirildi — login: %s" % login)
+                    if self.dup_numbers(gid):
+                        self.number_clash_dialog(self.dup_numbers(gid))
                 self.ask_cap_credentials(gid, self.gname(gid), got)
             popts = [(self.player_label(p), p["id"]) for p in self.d["players"]
                      if not self.is_captain(p["id"])]
@@ -1179,55 +1254,63 @@ class AdminMixin:
             if not self.require_admin():
                 return
             sz = {g["id"]: len(self.members(g["id"])) for g in groups}
-            # har guruhning kvota qoldig'i: 1 GK, 2 DF, 1 MF, 2 FW (kapitan ham hisobda)
+            # har guruhning asosiy 6 talik shakl qoldig'i: 1 GK, 2 DF, 1 MF, 2 FW (kapitan ham hisobda)
             need = {g["id"]: {k: POS_QUOTA[k] - self.pos_counts(
                         [p["id"] for p in self.members(g["id"])]).get(k, 0)
                     for k in POS_QUOTA} for g in groups}
-            power = {g["id"]: sum(self.player_ovr(p["id"])[0]
-                                  for p in self.members(g["id"])) for g in groups}
             pos_of = lambda p: (p.get("pos") or "MF").upper()
-            # kam uchraydigan pozitsiyadan boshlaymiz: kvota avval to'lsin
+            ovr_of = lambda p: self.player_ovr(p["id"])[0]
+            # kam uchraydigan pozitsiyadan boshlaymiz: shakl avval to'lsin
             scarce = sorted(POS_QUOTA, key=lambda k: sum(1 for p in pool if pos_of(p) == k))
-            placed, leftover = 0, []
+            placed, extra = 0, []
+
+            # --- 1-bosqich: avval HAMA jamoaning asosiy 6 tasi to'ldiriladi ---
             for pos in scarce:
-                xs = sorted([p for p in pool if pos_of(p) == pos],
-                            key=lambda p: self.player_ovr(p["id"])[0], reverse=True)
+                xs = sorted([p for p in pool if pos_of(p) == pos], key=ovr_of, reverse=True)
                 for p in xs:
-                    room = [gid for gid in sz
+                    want = [gid for gid in sz
                             if sz[gid] < MAX_GROUP and need[gid].get(pos, 0) > 0]
-                    if not room:
-                        leftover.append(p)
+                    if not want:
+                        extra.append(p)
                         continue
-                    # eng muhtaj guruh, teng bo'lsa kuch balansi uchun eng zaifi
-                    gid = min(room, key=lambda k: (-need[k][pos], power[k]))
+                    # eng muhtaj guruh; teng bo'lsa soni eng kam jamoa
+                    gid = min(want, key=lambda k: (-need[k][pos], sz[k]))
                     p["group"] = gid
                     need[gid][pos] -= 1
                     sz[gid] += 1
-                    power[gid] += self.player_ovr(p["id"])[0]
                     placed += 1
-            # kvotadan ortiq qolganlar: hali bo'sh kovotasi bor, keyin eng zaif guruhga
-            for p in leftover:
+            # --- 2-bosqich: ortib qolganlar jamoalar SONI Teng bo'lishi uchun beriladi ---
+            for p in sorted(extra, key=ovr_of, reverse=True):
                 room = [gid for gid in sz if sz[gid] < MAX_GROUP]
                 if not room:
                     break
-                pref = [gid for gid in room if any(v > 0 for v in need[gid].values())]
-                gid = min(pref or room, key=lambda k: (-max(need[k].values()), power[k]))
+                gid = min(room, key=lambda k: (sz[k], -max(need[k].values())))
                 p["group"] = gid
                 sz[gid] += 1
-                power[gid] += self.player_ovr(p["id"])[0]
                 placed += 1
             self.store.save()
             self.refresh_all()
             left = len(pool) - placed
-            msg = "%d o'yinchi jamoa shakliga qarab bo'lindi (1 GK / 2 DF / 1 MF / 2 FW)" % placed
+            msg = ("%d o'yinchi bo'lindi: avval har jamoaga asosiy 6 ta (1 GK / 2 DF / 1 MF / "
+                   "2 FW), so'ng ortiqchalar teng son qilib" % placed)
             if left:
                 msg += ". %d tasi sig'madi (har guruh max %d)" % (left, MAX_GROUP)
             toast(msg)
+            if self.shape_gaps():
+                self.shape_gap_dialog()
+            dups = self.dup_numbers()
+            if dups:
+                self.number_clash_dialog(dups)
         self.confirm_dialog(
             "Kvota bo'yicha bo'lish",
-            "%d ta so'rov jamoa shakliga qarab bo'linsinmi: har guruhga 1 darvozabon, "
-            "2 himoyachi, 1 yarim himoyachi, 2 hujumchi (max %d o'rin)? "
-            "Guruhlarga tushgan o'yinchilar joyida qoladi, kapitanlar aralashmaydi."
+            "%d ta so'rov ikki bosqichda bo'linsinmi?\n\n"
+            "1) Avval har guruhning ASOSIY 6 tasi to'ldiriladi: 1 darvozabon, 2 himoyachi, "
+            "1 yarim himoyachi, 2 hujumchi (MF va FW bir-birining o'rnini bosadi).\n"
+            "2) So'ng ortib qolgan o'yinchilar soni teng bo'ladigan qilib jamoalarga "
+            "beriladi (max %d o'rin).\n\n"
+            "Guruhlarga tushgan o'yinchilar joyida qoladi, kapitanlar aralashmaydi. "
+            "Eslatma: bir jamoaga takror futbolka raqami tushsa, ro'yxati ko'rsatiladi — "
+            "o'yinchilar bilan kelishib raqamni o'zingiz o'zgartirasiz."
             % (len(pool), MAX_GROUP), do)
 
     def admin_reset_split(self):
