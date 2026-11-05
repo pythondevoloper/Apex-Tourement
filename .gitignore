@@ -6,6 +6,10 @@ bin/
 uploads/
 *.log
 
+# PyInstaller (Windows .exe yig'ish) — chiqindilar va exe repoda kerak emas
+dist/
+build/
+
 # Ish stolida tekshiruvdan olingan skrinshotlar (scripts/render_check.py) —
 # ular faqat lokal tekshiruv uchun, repoda kerak emas.
 shots/

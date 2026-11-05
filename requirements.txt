@@ -2,3 +2,7 @@ kivy==2.2.1
 kivymd==1.1.1
 pillow
 certifi
+
+# Windows .exe yig'ish uchun qo'shimcha (APK'ga kerak emas):
+#   pip install pyinstaller
+#   python scripts/build_exe.py

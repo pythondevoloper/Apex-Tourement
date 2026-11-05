@@ -774,6 +774,12 @@ class RegisterScreen(MDScreen):
         ui.add_widget(card)
         ui.add_widget(Widget())
         ui.add_widget(G.solid_button("Yuborish", self.submit, h=52, fill=G.GREEN, size=15))
+        ui.add_widget(G.solid_button("Men avval ro'yxatdan o'tganman", self.claim,
+                                     h=46, fill=G.INDIGO, size=13))
+        ui.add_widget(G.note(
+            "Yangi telefon yoki kompyuterda ochilgan hisob uchun: tugmani bosib, "
+            "ro'yxatdan o'tgan ismingizni tanlasangiz — shu qurilma sizniki bo'ladi.",
+            size=10.5))
         root.add_widget(ui)
         self.add_widget(root)
 
@@ -787,6 +793,9 @@ class RegisterScreen(MDScreen):
         MDApp.get_running_app().submit_registration(
             self.first_field.text, self.last_field.text, self.num_field.text,
             self.pos_bar.value)
+
+    def claim(self):
+        MDApp.get_running_app().claim_registered()
 
 
 class StatusScreen(MDScreen):
@@ -2902,6 +2911,25 @@ class LeagueApp(MDApp):
         if ok:
             toast("Ro'yxatdan o'tdingiz! Admin guruhga biriktirgach ilova ochiladi.")
         return ok
+
+    def claim_registered(self):
+        """Bu qurilmani allaqachon ro'yxatdan o'tgan o'yinchi bilan bog'lash.
+        Telefon almashtirilganda yoki hisob kompyuterdagi .exe da ochilganda kerak:
+        hisob bulutda, faqat 'qaysi o'yinchiman' belgisi qurilmada saqlanadi."""
+        xs = sorted(self.d["players"], key=lambda p: p["name"].lower())
+        if not xs:
+            toast("Ro'yxatda hali hech kim yo'q — avval ro'yxatdan o'ting")
+            return
+        opts = [("%s  ·  %s  ·  %s" % (p["name"], p.get("number") or "-",
+                                       POS_NAME.get(p.get("pos"), p.get("pos") or "-")),
+                 p["id"]) for p in xs]
+
+        def chosen(pid):
+            self.set_my_pid(pid)
+            p = self.player(pid)
+            toast("Hisobingiz shu qurilmaga ulandi: %s" % (p["name"] if p else "?"))
+            self.route()
+        self.choose_dialog("O'zingizni tanlang", opts, chosen)
 
     # ---------------- GURUHLAR oynasi ----------------
     def refresh_groups(self):

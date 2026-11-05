@@ -107,6 +107,7 @@ DIALOGS = {
                ("player_card", lambda a: (103,), "card_66"),
                ("player_card", lambda a: (301,), "card_58"),
                ("token_history", lambda a: (101,)), ("share_table_image", lambda a: ()),
+               ("_claim_check", lambda a: ()),
                ("_number_check", lambda a: ()), ("_h2h_check", lambda a: ())],
     "referee": [("show_notifs", lambda a: ()), ("player_card", lambda a: (101,)),
                 ("lineup_dialog", lambda a: (G1, 1)), ("match_journal", lambda a: (a.match(1),)),
@@ -557,6 +558,59 @@ def check_clock(app, errors):
             panel._ev.cancel()
 
 
+def check_claim(app, errors):
+    """'Men avval ro'yxatdan o'tganman': yangi qurilma bazadagi eski hisobga bog'lanadi.
+    Hisob bulutda, 'qaysi o'yinchiman' belgisi esa qurilmada (me.json) turadi."""
+    snap = _snap(app)
+    me_real, save_real, choose_real = app.load_me, app._save_me, app.choose_dialog
+    me_state = dict(app.load_me())
+    try:
+        if not hasattr(app, "claim_registered"):
+            errors.append("claim: claim_registered yo'q")
+            return
+        # me.json ga tegmaymiz: test faylni buzmasligi uchun almashtirib qo'yamiz
+        def fake_save(me):
+            me_state.clear()
+            me_state.update(me)
+        app.load_me = lambda: dict(me_state)
+        app._save_me = fake_save
+
+        tugmalar = []
+        scr = getattr(app, "register_screen", None)
+        if scr is not None:
+            for w in scr.walk():
+                lbl = getattr(w, "lbl", None)
+                if lbl is not None and getattr(lbl, "text", ""):
+                    tugmalar.append(lbl.text)
+        if not any("Men avval ro'yxatdan o'tganman" in t for t in tugmalar):
+            errors.append("claim: ro'yxatdan o'tish ekranida tugma yo'q (%s)" % tugmalar)
+
+        got = []
+        app.choose_dialog = lambda title, opts, cb: got.append((title, opts, cb))
+        app.claim_registered()
+        if not got or "O'zingizni tanlang" not in got[0][0]:
+            errors.append("claim: ro'yxat ochilmadi (%s)" % [g[0] for g in got])
+        else:
+            _, opts, cb = got[0]
+            if len(opts) != len(app.d["players"]):
+                errors.append("claim: ro'yxat to'liq emas (%d/%d)"
+                              % (len(opts), len(app.d["players"])))
+            row = next((o for o in opts if o[1] == 103), None)
+            if not row or str(app.player(103)["number"]) not in row[0]:
+                errors.append("claim: qatorda raqam ko'rinmaydi (%s)" % (row,))
+            cb(103)
+            if me_state.get("pid") != 103:
+                errors.append("claim: qurilma 103 ga bog'lanmadi (%s)" % me_state)
+            if app.sm.current != "main":
+                errors.append("claim: tanlovdan keyin '%s' ekrani qoldi" % app.sm.current)
+            print("  [%s] claim: ro'yxat=%d qator='%s' -> pid=%s ekran=%s" %
+                  (app.__class__.__name__, len(opts), row[0] if row else "-",
+                   me_state.get("pid"), app.sm.current))
+    finally:
+        app.load_me, app._save_me, app.choose_dialog = me_real, save_real, choose_real
+        _restore(app, snap)
+
+
 def check_number(app, errors):
     """
     Futbolka raqami: har jamoada 1 raqam = 1 o'yinchi.
@@ -752,6 +806,7 @@ SENTINELS = {"_split_check": check_split,
              "_lock_check": check_lock,
              "_clock_check": check_clock,
              "_number_check": check_number,
+             "_claim_check": check_claim,
              "_backup_check": check_backup,
              "_png_check": check_png}
 

@@ -1,97 +1,208 @@
-APEX PRO LEAGUE - DO'STLAR UCHUN TANISHTIRUV VA FOYDALANISH TARTIBI
+APEX PRO LEAGUE - DO'STLAR UCHUN OGAHLANTIRISH VA FOYDALANISH QO'LLANMASI
+(v6 holati bo'yicha yangilandi - 05.11.2026)
 
 ============================================================
-1) QISQA TANISHTIRUV (do'stlarga yuborish uchun)
+0) TASHKILOTCHI UCHUN: E'LON QILISHDAN OLDIN
 ============================================================
 
-Apex Pro League - futbol turniri uchun ilova.
+  E'londagi "APK havolasi" ishlashi uchun avval bitta qadam kerak:
 
-Do'stlar bilan ligaga/turnirga ro'yxatdan o'tamiz, jamoalar (guruhlar)
-tuzamiz, tarkib tanlaymiz, o'yin natijalarini kiritamiz - hammasi
-bulutda, ya'ni har bir telefonda bir vaqtda ko'rinadi.
+    git tag v6 && git push origin v6
 
-Nima qilsa bo'ladi:
-  - Jamoalar, kapitanlar, o'yinlar jadvali (guruh bosqichi + final)
-  - Har o'yinda gol, assist, almashtirish, sariq/qizil kartochka,
-    "Player of the Match"
-  - JADVAL va REYTINGLAR (bombardir, assist, ochkolar) - jonli yangilanadi
-  - APEX TOKEN tizimi - kech qolish/kelmaslik jarimasi, market orqali
-    narsa sotib olish
-  - Tarkibni maydon ko'rinishida, "eng yaxshi 6", o'yin jurnali
+  Shundan keyin GitHub > Releases > "Latest" da to'rtala APK (Apex Tournament,
+  Apex Admin, Apex Captain, Apex Referee) paydo bo'ladi - ilova ichidagi
+  "yangilanish" xabari ham o'sha sahifaga olib boradi.
+  Hozir chop etilgan versiya v3.3 (Apex Captain yo'q, kapitanlik amallari
+  Apex Tournament ichida). v6 chiqmasa do'stlarga eski APK beriladi.
 
-Telefon: Android (APK). Internet kerak. Bepul.
+  [ ] belgili joylarni yuborishdan oldin to'ldiring: havola va telefon.
+
+============================================================
+1) OGAHLANTIRISH / E'LON MATNI (nusxalab Telegram yoki WhatsApp ga yuboring)
+============================================================
+
+  APEX PRO LEAGUE - TURNIR BOSHLANDI
+
+  Do'stlar, ligamizning o'z ilovasi ishga tushdi. Endi hammasi telefonda:
+  ro'yxatdan o'tish, jamoangiz, boshlang'ich tarkib, o'yinlar jadvali,
+  gol va assist reytingi, APEX TOKEN, xabarnomalar - hammasi jonli va
+  barcha telefonlarda bir vaqtda ko'rinadi.
+
+  SIZGA KERAKLI 3 QADAM:
+    1) APK'ni telefonga o'rnating: [Havola]
+       ("Noma'lum manbalar / Unknown sources" ga ruxsat so'raladi)
+    2) Ilovani oching va RO'YXATDAN O'TING:
+       Ism, Familiya, futbolkangiz raqami (1-99) va pozitsiyangiz
+       (GK darvozabon / DF himoyachi / MF yarim himoyachi / FW hujumchi).
+       Pozitsiyani tanlamasangiz ro'yxatga olinmaysiz.
+    3) Kuting. Admin sizni bir jamoaga biriktirgach ilova to'liq ochiladi.
+
+  TELEFON ALMASHTIRSANGIZ (yoki hisobni kompyuterda ochgan bo'lsangiz):
+    Ro'yxatdan o'tish ekranida «Men avval ro'yxatdan o'tganman» tugmasini bosing va
+    ro'yxatdan ismingizni tanlang - hisobingiz bulutda, shu qurilma unga bog'lanadi.
+    (Eski telefon ham ishlaveradi, ikkitasi bir vaqtda yuradi.)
+
+  MUHIM:
+    - Raqam jamoada NOYOB bo'lishi kerak: bir raqam ikki kishida bo'lmaydi.
+      Band raqamni topsangiz, admin bilan kelishib o'zgartirasiz.
+    - Pozitsiyangizni to'g'ri tanlang - jamoalar shu bo'yicha tuziladi
+      (har jamoaga asosiy 6 ta: 1 GK / 2 DF / 1 MF / 2 FW).
+    - Kech qolsangiz yoki kelmasangiz APEX TOKEN jarimasi yeyiladi.
+    - Ilova internet bilan ishlaydi. Batareya tejov rejimida yangilanish
+      sekinlashadi - o'yin kunida o'chirib qo'ying.
+
+  Savol bo'lsa: admin - [Ism], telefon [raqam].
 
 ============================================================
 2) ROLLAR (to'rt xil ilova)
 ============================================================
 
-  Apex Admin        - tashkilotchi (siz). Turnir ochadi, guruh/kapitan
-                      yaratadi, kapitanlarga login+parol beradi, natija
-                      kiritadi, hamma narsani boshqaradi.
+  Apex Tournament (player) - O'YINCHI uchun shaxsiy ilova. Ro'yxatdan o'tadi,
+      o'z kartasi va statistikasi, APEX TOKEN tarixi, xabarnomalar, jadval va
+      market narxlarini ko'radi. Tarkib va transfer qilmaydi.
 
-  Apex Tournament   - O'YINCHI uchun shaxsiy ilova. Ro'yxatdan o'tadi
-  (player)            (ism, familiya, raqam, pozitsiya); o'z kartasi,
-                      statistikasi, APEX TOKEN, xabarnomalar, jadval va
-                      market narxlari (o'qish uchun).
+  Apex Captain (captain) - JAMOA KAPITANI uchun alohida ilova. LOGIN va PAROLni
+      FAQAT admin beradi. Boshlang'ich 6 ni tanlaydi ("eng yaxshi 6" taklifi
+      bilan), jamoasini ko'radi, transfer so'rovi va muzokarasi yuritadi,
+      marketdan jamoa APEX PRO TOKENi bilan narsa oladi, guruh logosini
+      o'zgartiradi.
 
-  Apex Captain      - JAMOA KAPITANI uchun alohida ilova. Login va parolni
-  (captain)           FAQAT admin beradi. Boshlang'ich 6 ni tanlaydi
-                      (shakl: 1 GK / 2 DF / 1 MF / 2 FW; MF va FW o'rin
-                      almashadi), jamoasini ko'radi, transfer muzokarasi
-                      yuritadi, marketdan jamoa tokeni bilan narsa oladi.
+  Apex Referee (referee) - HAKAM. O'yin paytida gol/assist/kartochka kiritadi,
+      sekundomer (bo'limlar, qo'shimcha vaqt) shu ilovada. Hakamni admin
+      tayinlaydi va ism + PIN beradi.
 
-  Apex Referee      - hakam. O'yin paytida gol/assist kiritadi
-                      (hakamni admin tayinlaydi, ism + PIN beradi).
+  Apex Admin (admin) - TASHKILOTCHI (siz). Turnir ochish, guruh va kapitan,
+      "Kvota bo'lishi", o'yinlar jadvali, natijalar, token va jarimalar,
+      zaxira (backup), yordamchilar, hakamlar, kapitan loginlari.
 
 ============================================================
-3) ORNATISH
+3) O'RNATISH
 ============================================================
 
-  1. APK faylini telefonga o'rnating
-     (Sozlamalar > "Noma'lum manbalar / Unknown sources" ga ruxsat bering).
-  2. Har bir rol uchun o'z ilovasini qo'ying:
-     - o'yinchilarga  -> player APK
-     - kapitanlarga   -> captain APK
-     - hakamlarga     -> referee APK
-     - tashkilotchiga -> admin APK
+  1. APK faylini telefonga yuklab oling va o'rnating.
+  2. Har bir rol o'z ilovasi bilan:
+     - o'yinchilarga  -> Apex Tournament APK
+     - kapitanlarga   -> Apex Captain APK
+     - hakamlarga     -> Apex Referee APK
+     - tashkilotchiga -> Apex Admin APK
+  3. Android 5.0+ (Android 10 va planshetlarda ham ishlaydi, portret +
+     landshaft). Bepul.
+  4. Yangilanish: ilova ochilganda "yangi versiya" xabari chiqsa, ustiga
+     bosing - GitHub Releases sahifasiga olib boradi. Eski APK'ni o'chirib,
+     yangisini o'rnating.
+
+  KOMPYUTER UCHUN (.exe) - sinash yoki katta ekranda ishlash uchun:
+     ApexTournament.exe / ApexAdmin.exe / ApexReferee.exe / ApexCaptain.exe
+     (apex\dist\ papkasida, ~45 MB, Python o'rnatish shart emas). Birinchi
+     ochilishda 10-20 soniya kutadi. Eslatma: .exe da push bildirnoma va
+     galereyadan rasm yuklash ishlamaydi, Gemini AI funksiyalari o'chgan.
 
 ============================================================
 4) QADAM-BA-QADAM ISH TARTIBI
 ============================================================
 
-  1. ADMIN ilovani ochadi -> email/parol bilan kiradi ->
-     "Turnirni boshlash" tugmasini bosadi.
+  1. ADMIN ilovani ochadi -> email/parol bilan kiradi -> "Turnirni boshlash".
 
-  2. O'YINCHILAR player ilovasida ism + familiya + o'yin raqami +
-     pozitsiyasi (GK/DF/MF/FW) bilan ro'yxatdan o'tadi.
+  2. O'YINCHILAR Apex Tournament da ro'yxatdan o'tadi: ism, familiya,
+     raqam (1-99), pozitsiya (GK/DF/MF/FW). O'yinchi "so'rov" holatida
+     turadi - ilova to'liq ochilmaydi.
 
-  3. ADMIN guruhlar (jamoalar) yaratadi va ro'yxatdan o'tganlardan
-     KAPITANni tayinlaydi; har kapitan uchun LOGIN va PAROL yozadi
-     (Sozlamalar > Kapitan loginlari). Shu login/parolni kapitanga beradi.
-  4. ADMIN "Kvota bo'lishi" tugmasini bosadi -> barcha tanlanmagan
-     o'yinchilar jamoa shakliga qarab taqsimlanadi: har guruhga 1 GK,
-     2 DF, 1 MF, 2 FW (eng kuchli o'yinchilar zaifroq jamoalarga beriladi).
+  3. ADMIN guruh (jamoa) yaratadi va ro'yxatdan o'tganlar orasidan KAPITANni
+     tanlaydi; kapitan uchun login + parolni o'zi yozadi (masalan guruh-a-17,
+     parol 6 belgidan kam bo'lmasin) va shu ma'lumotni kapitanga beradi.
 
-  5. ADMIN o'yinlar jadvalini yaratadi (guruh bosqichi, kerak bo'lsa final).
+  4. ADMIN "Kvota bo'lishi" tugmasini bosadi - bo'lish IKKI BOSQICHDa:
+       1-bosqich: avval HAMMA jamoaning asosiy 6 tasi to'ldiriladi
+                  (1 GK / 2 DF / 1 MF / 2 FW; MF va FW bir-birining o'rnini
+                  bosadi, GK va DF boshqa pozitsiyada o'ynamaydi).
+       2-bosqich: ortib qolgan o'yinchilar JAMOALAR SONI TENG bo'ladigan
+                  qilib beriladi (har jamoada max 8 o'rin; sig'maganlar
+                  "so'rov"da qoladi va soni aytiladi).
+     Shundan keyin o'yinchilarda ilova to'liq ochiladi.
+     Asosiy 6 tasi to'lmagan jamoa qolsa admin ga "Asosiy 6 to'lmagan
+     jamoalar" oynasi chiqadi. Bir jamoaga takror raqam tushsa "Raqam
+     takrorlari" oynasi chiqadi - hech kimning raqami o'zgartirilmaydi,
+     admin kelishib o'zi beradi.
 
-  6. KAPITAN captain ilovasida login/parol bilan kiradi va har o'yin uchun
-     boshlang'ich 6 ni belgilaydi (tarkib qulflanmaguncha o'zgartirsa bo'ladi).
+  5. ADMIN o'yinlar jadvalini yaratadi (guruh bosqichi, kerak bo'lsa final)
+     va o'yin boshlanish vaqtini kiritadi (Tarkib qulfi).
 
-  7. O'yin o'tadi -> ADMIN yoki HAKAM natijani, gollarni, kartochkalarni
-     kiritadi.
+  6. KAPITAN Apex Captain da login/parol bilan kirib, har o'yin uchun
+     boshlang'ich 6 ni belgilaydi. Vaqt yetgach (boshlanishdan 15 daqiqa
+     oldin) tarkib QULFLANADI - hech kim o'zgartira olmaydi.
+
+  7. O'yin o'tadi: HAKAM (yoki admin) gol, assist, almashtirish, kartochka
+     va natijani kiritadi; sekundomer shu yerda.
 
   8. Hamma telefonlarda JADVAL, REYTING, TOKEN avtomatik yangilanadi
-     (taxminan 6 soniyada).
+     (~6 soniyada). Ballar teng bo'lsa O'ZARO UCHRASHUV hisobga olinadi.
+
+  9. Turnir oxirida: FINAL + jadvalni PNG qilib ulashish (Telegram/galereya),
+     kerak bo'lsa zaxira fayl (Sozlamalar > Turnir zaxirasi).
 
 ============================================================
-5) MUHIM ESLATMALAR
+5) O'YINCHI QO'LLANMASI (Apex Tournament)
 ============================================================
 
-  - Hammasi INTERNET orqali ishlaydi (ma'lumot bulutda saqlanadi).
-    Oflaynda faqat oxirgi ko'rilgan ma'lumot chiqadi, o'zgartirish saqlanmaydi.
+  - Ro'yxatdan o'tish: ism, familiya, raqam, pozitsiya. Raqamni keyin
+    o'zgartirish faqat admin orqali.
+  - Yangi telefon / qayta o'rnatilgan APK: «Men avval ro'yxatdan o'tganman» tugmasi
+    bilan ismingizni tanlab olasiz. Hisob bulutda saqlanadi, shuning uchun statistika,
+    token va jamoangiz o'zgarmaydi.
+  - "Jadval" - guruhlar, to'plar, ochkolar, o'zaro uchrashuv izohi.
+  - "Reytinglar" - bombardir, assist, MOTM, ochkolar.
+  - "Kartam" - o'z ko'rsatkichlaringiz, OVR, APEX TOKEN tarixi.
+  - "Xabarnomalar" (qo'ng'iroq belgisi) - transfer, jarima, jamoa yangiliklari.
+  - "Market" - narxlarni ko'rish (xaridni kapitan qiladi).
 
-  - PUSH BILDIRISHNOMA (xabar telefonga kelishi) Firebase sozlangach ishlaydi;
-    hozircha ilova ichidagi qo'ng'iroq belgisi (xabarnomalar) ishlaydi.
+============================================================
+6) KAPITAN QO'LLANMASI (Apex Captain)
+============================================================
 
-  - Admin hisobi va Firebase loyihasi oldindan sozlangan bo'lishi shart
-    (buni faqat tashkilotchi - siz qilasiz).
+  - Kirish: admin bergan LOGIN + PAROL. 3 marta xato qilsa 60 soniya kutish.
+  - "Tarkib": boshlang'ich 6 maydon ko'rinishida, shakl sanog'i
+    "Darvozabon 1/1 - Himoyachi 1/2 - MF+FW 3/3", "Eng yaxshi 6" tugmasi.
+    Shakl buzilgan bo'lsa saqlanmaydi. Tarkib qulflangach tugma ko'rinmaydi.
+  - "Jamoam": o'z jamoasi a'zolari, logoni o'zgartirish.
+  - "Transfer": o'yinchi so'rovi yuborish/qabul qilish, muzokara.
+    Eslatma: transferdan keyin raqam to'qnashsa xabarnoma keladi - raqamni
+    o'zingiz almashtirmang, admin bilan kelishingiz kerak.
+  - "Market": jamoa APEX PRO TOKENiga narsa olish.
+  - Chiqish: Profil > Chiqish (hisobga zarari yo'q).
+
+============================================================
+7) HAKAM QO'LLANMASI (Apex Referee)
+============================================================
+
+  - Kirish: admin bergan ISM + PIN.
+  - O'yinni tanlab gollarni (kim, daqiqa, assist) va kartochkalarni kiritadi.
+  - Sekundomer: bo'limlar, qo'shimcha vaqt; telefon o'chsa ham vaqt
+    qaytadan o'qiladi (mahalliy soatlama faylida).
+  - Hakam faqat o'yin natijasiga tegadi - jamoa, token yoki tarkibga emas.
+
+============================================================
+8) MUHIM ESLATMALAR VA OGAHLANTIRISHLAR
+============================================================
+
+  - Hammasi INTERNET orqali (ma'lumot bulutda). Oflaynda faqat oxirgi
+    ko'rilgan ma'lumot chiqadi, o'zgartirish saqlanmaydi.
+  - FUTBOLKA RAQAMI: 1 raqam = 1 o'yinchi (bitta jamoada). Turli jamoalarda
+    bir xil raqam bo'lishi mumkin.
+  - POZITSIYA muhim: jamoalar 1 GK / 2 DF / 1 MF / 2 FW shakli bo'yicha
+    tuziladi. MF va FW o'rin almashadi, GK va DF - yo'q.
+  - APEX TOKEN: kech qolish/kelmaslik jarimasi token yeydi; 0 token bo'lsa
+    ayrim amallar cheklanadi va OVR pasayadi.
+  - TARKIB QULFI: o'yin boshlanishidan 15 daqiqa oldin yopiladi - tarkibni
+    erta belgilang.
+  - QURILMA BILAN HISOB: "men qaysi o'yinchiman" belgisi telefonda saqlanadi, hisob
+    esa bulutda. Shuning uchun boshqa qurilmada «Men avval ro'yxatdan o'tganman»
+    tugmasi ishlatiladi; ismni qayta yozib ikkinchi hisob ochmang.
+  - PAROL/LOGIN: kapitan parolini hech kimga bermang; tiklash kerak bo'lsa
+    admin "Kapitan loginlari" da yangi parol yozadi.
+  - PUSH BILDIRISHNOMA: Firebase sozlangan bo'lsa telefonga chiqadi;
+    sozlanmagan bo'lsa ilova ichidagi qo'ng'iroq belgisi ishlaydi.
+  - XAVFSIZLIK: bazadagi ma'lumot hamma uchun o'qiladigan - keraksiz shaxsiy
+    ma'lumot (pasport, manzil) kiritmang. Zaxira faylni (butun turnir ichida)
+    begonalarga yubormang.
+  - ADMIN oldindan sozlangan bo'lishi shart (Firebase loyihasi va admin
+    hisobi) - buni faqat tashkilotchi qiladi.

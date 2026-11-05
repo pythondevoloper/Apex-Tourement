@@ -70,6 +70,11 @@ o'zingizda) va `apex-referee-apk` (hakamlarga).
    **o'yindagi raqami** (1-99) va **pozitsiyasi** (GK / DF / MF / FW) kiritiladi va bazaga saqlanadi.
    Pozitsiya tanlanmasa ro'yxatdan o'tish qabul qilinmaydi. So'ng o'yinchida
    *"Kuting — admin sizni guruhga biriktirgach ilova to'liq ishga tushadi"* xabari ko'rinadi.
+   **Hisobni boshqa qurilmaga olish:** o'yinchining kimligi (`pid`) faqat shu qurilmadagi
+   `me.json` da turadi, hisobning o'zi bulutda. Shuning uchun telefon almashtirilsa, APK
+   o'chirilib qayta o'rnatilsa yoki hisob kompyuterdagi `.exe` da ochilgan bo'lsa — ro'yxatdan
+   o'tish ekranidagi **«Men avval ro'yxatdan o'tganman»** tugmasi bosiladi, ro'yxatdagi ism
+   tanlanadi va shu qurilma o'sha hisobga bog'lanadi (eski qurilma ham ishlayveradi).
 4. Admin guruh qo'shadi va ro'yxatdan o'tgan o'yinchilar orasidan **kapitanni tanlaydi**. Guruh
    qo'shishda va kapitanni almashtirishda admin **kapitan logini va parolini** o'zi belgilaydi
    (masalan `guruh-a-17`, parol kamida 6 belgi) — shu ma'lumotni kapitan **Apex Captain** ilovasiga
@@ -255,6 +260,32 @@ ochish mumkin.
 - Internet yo'q bo'lsa ilova oxirgi yuklangan ma'lumotni ko'rsatadi (OFLAYN belgisi bilan), lekin o'zgartirish saqlanmaydi.
 - Eski (bitta telefonli) versiyadagi ma'lumotlar ko'chmaydi: admin ilovasida turnirni qaytadan sozlaysiz.
 
+## Ish stoli uchun .exe (Windows)
+
+Telefonsiz sinash yoki kompyuterda ishlatish uchun to'rtala ilova ham bitta faylli
+`.exe` qilib yig'iladi (PyInstaller — butunlay bepul, pulli versiyasi kerak emas):
+
+```
+python scripts/build_exe.py            # to'rtalasini
+python scripts/build_exe.py admin      # bittasi: player | admin | referee | captain
+```
+
+Chiqadi: `dist/ApexTournament.exe`, `dist/ApexAdmin.exe`, `dist/ApexReferee.exe`,
+`dist/ApexCaptain.exe` (har biri ~45 MB; o'sha kompyuterda Python o'rnatilishi shart emas).
+
+- **Ishlaydi:** Firebase bilan o'qish/yozish, to'rtala ilovaning o'zi (glass dizayn,
+  jadval, o'zaro uchrashuv, tarkib qulfi, sekundomer, jadval PNG'si, zaxira/backup).
+- **Ishlamaydi:** FCM push (Android-ga xos), telefon galereyasidan rasm yuklash,
+  `google-services.json` — ular faqat APK'da bor.
+- **Gemini kaliti paketga kirmaydi:** `--exclude-module gemini_secret` qo'yilgan, chunki
+  exe ichidagi modulli faylni ochib oson o'qish mumkin edi. Shuning uchun `.exe` da AI
+  rasm/video funksiyalari o'chgan holatda turadi (bazaga zarari yo'q).
+- Birinchi ochilishda 10-20 soniya kutadi — exe o'zini vaqtinchalik papkaga yechadi.
+- Ma'lumot papkasi: `%APPDATA%\admin` (yoki `player` / `referee` / `captain`) — kesh,
+  `crash.log`, `backups\`, `export\` shu yerda.
+- Ikonalar `icon*.png` dan avtomatik `.ico` ga aylanadi (`build\ico\`).
+- `dist\` va `build\` `.gitignore` da — exe'lar GitHub'ga tushmaydi.
+
 ## Push bildirishnoma (FCM) — bepul GitHub Actions
 
 Push yuborish uchun Firebase **server kaliti** kerak, uni APK ichiga joylab bo'lmaydi. Shuning uchun
@@ -436,6 +467,11 @@ Teg push qiling: `git tag v5 && git push origin v5`.
   sanaladi. `common.py` da `shape_gaps()` — asosiy 6 tasi to'lmagan guruhlar ro'yxati
   (MF+FW birga 3 ta, shuning uchun «hujumchi yetishmaydi» deb asossiz qo'rqitmaydi), admin
   panelida **«Asosiy 6 to'lmagan jamoalar»** oynasi bo'lishdan keyin avtomatik chiqadi.
+- **Hisobni yangi qurilmaga ulash.** Ro'yxatdan o'tish ekranida yangi tugma:
+  **«Men avval ro'yxatdan o'tganman»** → `claim_registered()` ro'yxatdagi o'yinchilarni
+  «Ism · raqam · pozitsiya» ko'rinishida chiqaradi, tanlangach `me.json` dagi `pid` shu
+  qurilmaga yoziladi. Telefon almashtirish, APK'ni qayta o'rnatish va kompyuterda `.exe` orqali
+  ochilgan hisob shu yo'l bilan olinadi (hisob bulutda, faqat bog'lanish yangilanadi).
 - **Jadvalni PNG qilib ulashish.** Jadval tab'ining boshidagi tugma jadvalni
   (guruhlar, o'zaro uchrashuv izohi, chempion, bombardirlar) shisha panelga yig'adi,
   ko'rib chiqish oynasini ochadi va **"PNG yuborish"** bilan 2× aniqlikdagi rasmga
@@ -458,5 +494,7 @@ tiklash), jadval PNG faylini va futbolka raqami qoidasini (bo'sh raqam topish, t
 band raqam rad etilishi, taqsim/transfer raqamlarni o'zgartirmasligi). Kvota bo'lishi sinovi ham
 ikki bosqichni tekshiradi: hech kim so'rovda qolmaydi, hamma guruhda asosiy 6 ta to'liq
 (`shape_gaps()` bo'sh) va jamoalar soni 1 tadan ortiq farq qilmaydi; sun'iy ravishda darvozabonni
-MF ga o'zgartirib, «Asosiy 6» oynasining chiqishini ham sinaydi.
+MF ga o'zgartirib, «Asosiy 6» oynasining chiqishini ham sinaydi. «Men avval ro'yxatdan o'tganman»
+sinovi esa tugma ekranda borligini, ro'yxat to'liq chiqishini, tanlov `me.json` ga yozilishini va
+shundan keyin `register` o'rniga asosiy ekran ochilishini tekshiradi (test `me.json` ga tegmaydi).
 
