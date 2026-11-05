@@ -49,6 +49,7 @@ import gemini
 import glassui as G          # glass dizayn vidjetlari (o'yinchi/hakam/admin bir uslub)
 import player_card as PC     # qalqon shaklidagi o'yinchi kartasi
 from cloud import Firebase, RemoteStore, CloudError, TOKEN_START
+from cloud import to_remote, from_remote, merge_into   # zaxira (backup) fayllari uchun
 
 # Jamoa shakli: 1 darvozabon, 2 himoyachi, 1 yarim himoyachi, 2 hujumchi.
 POS_QUOTA = {"GK": 1, "DF": 2, "MF": 1, "FW": 2}
@@ -56,6 +57,8 @@ POS_QUOTA = {"GK": 1, "DF": 2, "MF": 1, "FW": 2}
 # o'ynay oladi. GK va DF boshqa pozitsiyada o'ynamaydi.
 FLEX_SLOTS = ("MF", "FW")
 LINEUP_SIZE = sum(POS_QUOTA.values())
+LINEUP_LOCK_MIN = 15   # o'yin boshlanishidan shuncha daqiqa oldin tarkib avtomatik qulflanadi
+CLOCK_HALF_MIN = 20    # hakam sekundomerida bir bo'lim davomiyligi (daqiqa)
 
 # Ball tizimi
 POINTS = {"goal": 3, "assist": 2, "win": 3, "yellow": -1, "red": -3}
@@ -582,6 +585,67 @@ def open_url(url):
         pass
 
 
+def media_store_uri(path, mime):
+    """Faylni MediaStore ga nusxalab content:// URI qaytaradi.
+
+    Android 7+ 'Ulashish' oynasi file:// URI ni rad etadi (FileUriExposedException),
+    shuning uchun tizim kutubxonasidagi manzil ishlatiladi.
+    """
+    from jnius import autoclass
+    PythonActivity = autoclass("org.kivy.android.PythonActivity")
+    ContentValues = autoclass("android.content.ContentValues")
+    MediaStore = autoclass("android.provider.MediaStore")
+    Files = autoclass("java.nio.file.Files")
+    Paths = autoclass("java.nio.file.Paths")
+    ctx = PythonActivity.mActivity
+    vals = ContentValues()
+    vals.put("_display_name", os.path.basename(path))
+    vals.put("mime_type", mime)
+    if mime.startswith("image/"):
+        vals.put("relative_path", "Pictures/")
+        coll = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+    else:
+        vals.put("relative_path", "Download/")
+        coll = MediaStore.Downloads.EXTERNAL_CONTENT_URI
+    uri = ctx.getContentResolver().insert(coll, vals)
+    if uri is None:
+        raise IOError("MediaStore ruxsat bermadi")
+    out = ctx.getContentResolver().openOutputStream(uri)
+    try:
+        Files.copy(Paths.get(path), out)
+    finally:
+        out.close()
+    return uri
+
+
+def share_file(path, mime="*/*", title="Ulashish"):
+    """Faylni tizim 'Ulashish' oynasiga beradi (Telegram/WhatsApp/Drive...)."""
+    try:
+        from jnius import autoclass
+        from android import activity
+        Intent = autoclass("android.content.Intent")
+        try:
+            uri = media_store_uri(path, mime)
+        except Exception:
+            uri = autoclass("android.net.Uri").fromFile(autoclass("java.io.File")(path))
+        i = Intent(Intent.ACTION_SEND)
+        i.setType(mime)
+        i.putExtra(Intent.EXTRA_STREAM, uri)
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        activity.startActivity(Intent.createChooser(i, title))
+        return True
+    except Exception:
+        pass
+    try:
+        import webbrowser
+        webbrowser.open("file:///" + os.path.abspath(path).replace("\\", "/"))
+        toast("Fayl ochildi: " + os.path.basename(path))
+        return True
+    except Exception:
+        toast("Fayl saqlandi: " + path)
+        return False
+
+
 # --------------------------------------------------------------------------
 #  Ma'lumotlar ombori (JSON)
 # --------------------------------------------------------------------------
@@ -752,6 +816,72 @@ class StatusScreen(MDScreen):
         self.btn.disabled = not retry
 
 
+class RefClockPanel(G.Glass):
+    """Hakam sekundomeri paneli: jonli mm:ss + bo'lim almashtirish.
+
+    Vaqt faqat shu qurilmada saqlanadi (clock.json) — bazaga yozilmaydi, shuning
+    uchun boshqa telefonlar uni ko'rmaydi. Gol kiritilganda esa daqiqa
+    bazadagi gol yoziga qo'shib qo'yiladi (jurnal shu daqiqani ko'rsatadi).
+    """
+
+    def __init__(self, mid, **kw):
+        super().__init__(orientation="vertical", size_hint_y=None, spacing=dp(8),
+                         padding=(dp(12), dp(12)), radius=18,
+                         fill=(0.055, 0.08, 0.21, 1), border=(0.35, 0.75, 1, .55), **kw)
+        self.bind(minimum_height=self.setter("height"))
+        self.mid = mid
+        self.app = MDApp.get_running_app()
+        self.time_lbl = G.TL("00:00", 40, G.WHITE, bold=True, align="center",
+                             size_hint_y=None, height=dp(52))
+        self.half_lbl = G.TL("", 12.5, G.CYAN, align="center", size_hint_y=None, height=dp(22))
+        self.add_widget(self.time_lbl)
+        self.add_widget(self.half_lbl)
+        row = G.BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(8))
+        self.run_btn = G.solid_button("Boshlash", self.toggle, h=48, fill=G.GREEN)
+        row.add_widget(self.run_btn)
+        row.add_widget(G.solid_button("Bo'lim", self.next_half, h=48, fill=G.INDIGO))
+        row.add_widget(G.solid_button("Nolga", self.reset, h=48, fill=RED))
+        self.add_widget(row)
+        self.add_widget(G.note("Gol kiritganda shu soatning daqiqasi jurnalga yoziladi.", size=10.5))
+        self._ev = Clock.schedule_interval(self.redraw, 0.25)
+        self.bind(parent=self._gone)
+        self.redraw(0)
+
+    def _gone(self, widget, parent):
+        """Dialog yopilganda (parent=None) jonli yangilanishni to'xtatamiz."""
+        if parent is None:
+            self._ev.cancel()
+            self._ev = None
+
+    @property
+    def st(self):
+        return self.app.clock_state(self.mid)
+
+    def redraw(self, *a):
+        s = self.st
+        sec = self.app.clock_seconds(s)
+        self.time_lbl.text = "%02d:%02d" % (sec // 60, sec % 60)
+        self.half_lbl.text = "%d-bo'lim  ·  %s" % (
+            s["half"], "YURMOQDA" if s["since"] else ("pauza" if s["acc"] else "to'xtagan"))
+        self.run_btn.lbl.text = "Pauza" if s["since"] else "Boshlash"
+        self.run_btn.set_style(fill=RED if s["since"] else G.GREEN)
+
+    def toggle(self, *a):
+        self.app.clock_toggle(self.mid)
+        self.redraw(0)
+
+    def next_half(self, *a):
+        self.app.clock_next_half(self.mid)
+        self.redraw(0)
+
+    def reset(self, *a):
+        def yes(*b):
+            self.app.clock_reset(self.mid)
+            self.redraw(0)
+        self.app.confirm_dialog("Sekundomeri nolga qaytarilsinmi?",
+                                "Vaqt 00:00 bo'ladi va 1-bo'limga qaytadi.", yes)
+
+
 class LeagueApp(MDApp):
     dialog = None
     ADMIN_APP = False                  # AdminApp da True
@@ -852,8 +982,19 @@ class LeagueApp(MDApp):
         Clock.schedule_once(lambda dt: push.request_notification_permission(), 1.0)
         Clock.schedule_once(lambda dt: self.start_sync(), 0.3)
         Clock.schedule_interval(self.poll, getattr(config, "POLL_SECONDS", 6))
+        Clock.schedule_interval(self._lock_tick, 20)
         self.check_update()
         return self.sm
+
+    def _lock_tick(self, *a):
+        """Boshlanish vaqti yetganda qulf holati o'zgaradi: ochiq Tarkib tab'ini yangilaymiz."""
+        sig = tuple((m["id"], self.lineup_closed(m)) for m in self.d["matches"])
+        if sig == self.__dict__.get("_lock_sig"):
+            return
+        self._lock_sig = sig
+        if (self.sm.current == "main" and getattr(self, "_content_sm", None) is not None
+                and self._content_sm.current == "lineup"):
+            self.refresh_lineup()
 
     # ---------------- ilova yangilanishini tekshirish ----------------
     def check_update(self, *a):
@@ -1354,7 +1495,7 @@ class LeagueApp(MDApp):
     def purge_from_lineups(self, pid):
         """O'yinchi guruhdan chiqsa, hali o'ynalmagan va qulflanmagan tarkiblardan olib tashlanadi."""
         for m in self.d["matches"]:
-            if m["hs"] is None and not m["lineup_locked"]:
+            if m["hs"] is None and not self.lineup_closed(m):
                 for k in list(m["lineups"].keys()):
                     m["lineups"][k] = [x for x in m["lineups"][k] if x != pid]
 
@@ -1884,6 +2025,122 @@ class LeagueApp(MDApp):
         outs = {s["out"] for s in m["subs"] if s["team"] == gid}
         return [pid for pid in self.team_appeared(m, gid) if pid not in outs]
 
+    # ---------------- hakam sekundomeri (faqat shu qurilmada saqlanadi) ----------------
+    def _clock_path(self):
+        return os.path.join(self.user_data_dir, "clock.json")
+
+    def clock_all(self):
+        if self.__dict__.get("_clocks") is None:
+            try:
+                with open(self._clock_path(), "r", encoding="utf-8") as f:
+                    self._clocks = json.load(f)
+            except Exception:
+                self._clocks = {}
+        return self._clocks
+
+    def clock_state(self, mid):
+        s = self.clock_all().get(str(mid)) or {}
+        return dict(mid=mid, half=int(s.get("half") or 1),
+                    acc=int(s.get("acc") or 0), since=s.get("since"))
+
+    def clock_save(self, st):
+        self._clocks = self.clock_all()
+        self._clocks[str(st["mid"])] = {k: st[k] for k in ("half", "acc", "since")}
+        try:
+            tmp = self._clock_path() + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(self._clocks, f)
+            os.replace(tmp, self._clock_path())
+        except Exception:
+            pass
+
+    @staticmethod
+    def clock_seconds(st):
+        return st["acc"] + ((now_ts() - st["since"]) if st["since"] else 0)
+
+    def clock_toggle(self, mid):
+        st = self.clock_state(mid)
+        if st["since"]:
+            st["acc"], st["since"] = self.clock_seconds(st), None
+        else:
+            st["since"] = now_ts()
+        self.clock_save(st)
+
+    def clock_next_half(self, mid):
+        st = self.clock_state(mid)
+        st["half"] = 1 if st["half"] >= 2 else st["half"] + 1
+        st["acc"] = 0
+        if st["since"]:
+            st["since"] = now_ts()
+        self.clock_save(st)
+
+    def clock_reset(self, mid):
+        self.clock_save(dict(mid=mid, half=1, acc=0, since=None))
+
+    def clock_minute(self, mid):
+        """Ushbu o'yin uchun sekundomer daqiqasi (1..N); soat ishga tushmagan bo'lsa None."""
+        st = self.clock_state(mid)
+        if not st["since"] and not st["acc"]:
+            return None
+        return (st["half"] - 1) * CLOCK_HALF_MIN + self.clock_seconds(st) // 60 + 1
+
+    def clock_running_text(self, mid):
+        st = self.clock_state(mid)
+        if not st["since"]:
+            return ""
+        sec = self.clock_seconds(st)
+        return "  ·  ⏱ %02d:%02d (%d-bo'lim)" % (sec // 60, sec % 60, st["half"])
+
+    @staticmethod
+    def min_tag(ev):
+        return "%d'  ·  " % ev["min"] if ev.get("min") else ""
+
+    def clock_dialog(self, *a):
+        opts = [(self.match_label(m), m["id"]) for m in self.d["matches"] if m["hs"] is None]
+        if not opts:
+            toast("Sekundomer uchun o'ynalmagan o'yin yo'q")
+            return
+        if len(opts) == 1:
+            self.show_clock(opts[0][1])
+            return
+        self.choose_dialog("Qaysi o'yinning soati?", opts, self.show_clock)
+
+    def show_clock(self, mid):
+        m = self.match(mid)
+        self.show_dialog("Sekundomer: " + (self.match_label(m) if m else ""),
+                         content=RefClockPanel(mid))
+
+    # ---------------- o'yin boshlanishi va avtomatik qulf ----------------
+    def kick_ts(self, m):
+        k = m.get("kick")
+        return int(k) if isinstance(k, (int, float)) and k else None
+
+    def lock_at(self, m):
+        """Tarkib avtomatik yopiladigan vaqt: boshlanishdan LINEUP_LOCK_MIN oldin."""
+        k = self.kick_ts(m)
+        return None if k is None else k - LINEUP_LOCK_MIN * 60
+
+    def auto_locked(self, m):
+        at = self.lock_at(m)
+        return at is not None and now_ts() >= at
+
+    def lineup_closed(self, m):
+        """Tarkib yopiqmi: qo'lab qulf, avtomatik qulf yoki o'yin tugagan."""
+        return bool(m.get("lineup_locked")) or m.get("hs") is not None or self.auto_locked(m)
+
+    def lock_note(self, m):
+        """Qulf holatining qisqa matni (barcha ilovalar uchun bir xil)."""
+        if m.get("hs") is not None:
+            return "natija kiritilgan"
+        if m.get("lineup_locked"):
+            return "tarkib QULFLANGAN (admin)"
+        at = self.lock_at(m)
+        if at is None:
+            return "tarkib ochiq"
+        if now_ts() >= at:
+            return "tarkib QULFLANGAN (avtomatik)"
+        return "tarkib ochiq · %d daq. keyin qulflanadi" % ((at - now_ts() + 59) // 60)
+
     def recompute_score(self, m):
         """Hisob gollar ro'yxatidan avtomatik hisoblanadi."""
         m["hs"] = sum(1 for g in m["goals"] if g["team"] == m["home"])
@@ -1915,8 +2172,11 @@ class LeagueApp(MDApp):
                             [(self.pname(pid), pid) for pid in field if pid != sid]
 
                     def got_assist(aid):
-                        m["goals"].append({"scorer": sid, "assist": aid, "team": gid,
-                                           "ts": now_ts()})
+                        g = {"scorer": sid, "assist": aid, "team": gid, "ts": now_ts()}
+                        mn = self.clock_minute(m["id"])
+                        if mn:
+                            g["min"] = mn
+                        m["goals"].append(g)
                         self.recompute_score(m)
                         self.store.save()
                         self.refresh_all()
@@ -1931,7 +2191,8 @@ class LeagueApp(MDApp):
         for m in self.d["matches"]:
             for i, g in enumerate(m["goals"]):
                 ast = f", assist: {self.pname(g['assist'])}" if g.get("assist") else ""
-                opts.append((f"{self.pname(g['scorer'])}{ast} ({self.match_label(m)})", (m["id"], i)))
+                opts.append((f"{self.min_tag(g)}{self.pname(g['scorer'])}{ast} "
+                             f"({self.match_label(m)})", (m["id"], i)))
         if not opts:
             toast("O'chirish uchun gol yo'q")
             return
@@ -2641,6 +2902,7 @@ class LeagueApp(MDApp):
         if self.CAPTAIN_APP:
             acts.append(("Guruh logosini yuklash", self.captain_logo_upload, G.INDIGO))
         if self.REFEREE_APP:
+            acts.append(("Hakam sekundomeri", self.clock_dialog, G.CYAN))
             acts.append(("Hakam: gol kiritish (muallif + assist)", self.goal_add, G.GREEN))
             acts.append(("Hakam: golni o'chirish", self.goal_remove, RED))
         for text, cb, col in acts:
@@ -2654,8 +2916,7 @@ class LeagueApp(MDApp):
         if not self.d["matches"]:
             box.add_widget(self.note("O'yinlar hali yaratilmagan."))
         for m in self.d["matches"]:
-            state = ("natija kiritilgan" if m["hs"] is not None else
-                     ("tarkib QULFLANGAN" if m["lineup_locked"] else "tarkib ochiq"))
+            state = self.lock_note(m) + self.clock_running_text(m["id"])
             score = "—" if m["hs"] is None else f"{m['hs']} : {m['as']}"
             box.add_widget(G.MatchCard(
                 self.gname(m["home"]), self._grp_color(m["home"]), score,
@@ -2664,6 +2925,10 @@ class LeagueApp(MDApp):
                 m["hs"] is not None, lambda mm=m: self.match_journal(mm)))
 
             inner = [self.note("O'yin jurnali uchun kartani bosing.")]
+            if self.kick_ts(m) and m["hs"] is None:
+                inner.append(self.note("Boshlanishi: %s  ·  tarkib %s gacha ochiq."
+                                       % (self._fmt_ts(self.kick_ts(m)),
+                                          self._fmt_ts(self.lock_at(m)))))
             for gid in (m["home"], m["away"]):
                 ids = m["lineups"].get(str(gid), [])
                 names = ", ".join(self.pname(i) for i in ids) if ids else "kiritilmagan"
@@ -2672,7 +2937,7 @@ class LeagueApp(MDApp):
                 inner.append(G.note(names))
                 if ids:
                     inner.append(self.pitch_widget(m, gid))
-                if gid in cap_gids and m["hs"] is None and not m["lineup_locked"]:
+                if gid in cap_gids and not self.lineup_closed(m):
                     opp = m["away"] if gid == m["home"] else m["home"]
                     inner.append(G.solid_button(
                         f"Boshlang'ich 6 — {self.gname(opp)} bilan",
@@ -2680,17 +2945,18 @@ class LeagueApp(MDApp):
                         h=44, fill=G.GREEN, size=12.5))
             for gl in m["goals"]:
                 ast = f" — assist: {self.pname(gl['assist'])}" if gl.get("assist") else ""
-                inner.append(self.event_row("soccer", f"Gol ({self.gname(gl['team'])}): "
+                inner.append(self.event_row("soccer", f"{self.min_tag(gl)}Gol "
+                                                      f"({self.gname(gl['team'])}): "
                                                       f"{self.pname(gl['scorer'])}{ast}", G.GREEN))
             for sb in m["subs"]:
                 inner.append(self.event_row(
                     "swap-horizontal",
-                    f"Almashtirish ({self.gname(sb['team'])}): "
+                    f"{self.min_tag(sb)}Almashtirish ({self.gname(sb['team'])}): "
                     f"{self.pname(sb['out'])} chiqdi, {self.pname(sb['in'])} kirdi", G.MUTED))
             for c in m["cards"]:
                 inner.append(self.event_row(
-                    "circle", f"{'Qizil' if c['type'] == 'red' else 'Sariq'} kartochka: "
-                              f"{self.pname(c['pid'])}",
+                    "circle", f"{self.min_tag(c)}{'Qizil' if c['type'] == 'red' else 'Sariq'} "
+                              f"kartochka: {self.pname(c['pid'])}",
                     RED if c["type"] == "red" else G.YELLOW))
             top_pid, mode, tied = self.motm(m)
             if mode in ("auto", "admin"):
@@ -2793,15 +3059,15 @@ class LeagueApp(MDApp):
         events = []
         for gl in m["goals"]:
             ast = f" (assist: {self.pname(gl['assist'])})" if gl.get("assist") else ""
-            events.append((gl.get("ts"), f"GOL — {self.gname(gl['team'])}: "
-                                         f"{self.pname(gl['scorer'])}{ast}"))
+            events.append((gl.get("ts"), self.min_tag(gl) + f"GOL — {self.gname(gl['team'])}: "
+                             f"{self.pname(gl['scorer'])}{ast}"))
         for sb in m["subs"]:
-            events.append((sb.get("ts"), f"Almashtirish — {self.gname(sb['team'])}: "
-                                         f"{self.pname(sb['out'])} chiqdi, "
-                                         f"{self.pname(sb['in'])} kirdi"))
+            events.append((sb.get("ts"), self.min_tag(sb) + f"Almashtirish — {self.gname(sb['team'])}: "
+                           f"{self.pname(sb['out'])} chiqdi, "
+                           f"{self.pname(sb['in'])} kirdi"))
         for c in m["cards"]:
             kind = "QIZIL" if c["type"] == "red" else "SARIQ"
-            events.append((c.get("ts"), f"{kind} kartochka — {self.pname(c['pid'])}"))
+            events.append((c.get("ts"), self.min_tag(c) + f"{kind} kartochka — {self.pname(c['pid'])}"))
         events.sort(key=lambda e: e[0] or 0)
         items = [TwoLineListItem(text=txt, secondary_text=self._fmt_ts(ts), disabled=True)
                  for ts, txt in events]
@@ -2880,8 +3146,8 @@ class LeagueApp(MDApp):
         if not m or gid not in (m["home"], m["away"]):
             toast("O'yin topilmadi")
             return False
-        if m["hs"] is not None or m["lineup_locked"]:
-            toast("Bu o'yin tarkibi qulflangan")
+        if self.lineup_closed(m):
+            toast("Tarkib yopiq — " + self.lock_note(m))
             return False
         if len(set(pids)) != LINEUP_SIZE:
             toast(f"Aynan {LINEUP_SIZE} ta o'yinchi tanlang")
@@ -2970,13 +3236,16 @@ class LeagueApp(MDApp):
 
     def standings(self, grp=None, stage="group"):
         ids = set(grp) if grp is not None else None
-        rows = {g["id"]: dict(gid=g["id"], name=g["name"], P=0, W=0, D=0, L=0, GF=0, GA=0, PTS=0)
+        rows = {g["id"]: dict(gid=g["id"], name=g["name"], P=0, W=0, D=0, L=0, GF=0, GA=0, PTS=0,
+                              HPTS=0, HGD=0, HGF=0)
                 for g in self.d["groups"] if ids is None or g["id"] in ids}
+        played = []
         for m in self.d["matches"]:
             if m.get("stage", "group") != stage or m["hs"] is None:
                 continue
             if m["home"] not in rows or m["away"] not in rows:
                 continue
+            played.append(m)
             h, a = rows[m["home"]], rows[m["away"]]
             h["P"] += 1; a["P"] += 1
             h["GF"] += m["hs"]; h["GA"] += m["as"]
@@ -2987,8 +3256,45 @@ class LeagueApp(MDApp):
                 a["W"] += 1; h["L"] += 1; a["PTS"] += 3
             else:
                 h["D"] += 1; a["D"] += 1; h["PTS"] += 1; a["PTS"] += 1
+        clusters = {}
+        for r in rows.values():
+            clusters.setdefault(r["PTS"], []).append(r["gid"])
+        for gids in clusters.values():
+            if len(gids) > 1:
+                self._h2h(rows, played, gids)
         return sorted(rows.values(),
-                      key=lambda r: (-r["PTS"], -(r["GF"] - r["GA"]), -r["GF"], r["name"]))
+                      key=lambda r: (-r["PTS"], -r["HPTS"], -r["HGD"], -r["HGF"],
+                                     -(r["GF"] - r["GA"]), -r["GF"], r["name"]))
+
+    @staticmethod
+    def _h2h(rows, played, gids):
+        """Teng balli jamoalar klasteri ichidagi o'zaro uchrashuv mini-jadvali.
+
+        Qoida: klaster a'zolari o'zaro HAMMA juftliklarni o'ynab bo'lgan bo'lsagina
+        o'zaro uchrashuv qo'llanadi — aks holda o'yinlar tugallanmagan, umumiy
+        to'plar farqi asosiy ko'rsatkich bo'lib qoladi.
+        """
+        sel = set(gids)
+        need = {(a, b) for a in gids for b in gids if a < b}
+        done = {(min(m["home"], m["away"]), max(m["home"], m["away"]))
+                for m in played if m["home"] in sel and m["away"] in sel}
+        if not need <= done:
+            return
+        mini = {g: dict(PTS=0, GD=0, GF=0) for g in gids}
+        for m in played:
+            if m["home"] not in sel or m["away"] not in sel:
+                continue
+            h, a = mini[m["home"]], mini[m["away"]]
+            h["GF"] += m["hs"]; h["GD"] += m["hs"] - m["as"]
+            a["GF"] += m["as"]; a["GD"] += m["as"] - m["hs"]
+            if m["hs"] > m["as"]:
+                h["PTS"] += 3
+            elif m["hs"] < m["as"]:
+                a["PTS"] += 3
+            else:
+                h["PTS"] += 1; a["PTS"] += 1
+        for g, x in mini.items():
+            rows[g].update(HPTS=x["PTS"], HGD=x["GD"], HGF=x["GF"])
 
     def _table_rows(self, box, rows, top_mark=1):
         box.add_widget(G.table_row(["O'yin", "G'D'M", "To'plar", "Ball"],
@@ -3000,19 +3306,113 @@ class LeagueApp(MDApp):
                 name=f"{self.rank_text(i)}.  {r['name']}",
                 hl=(i <= top_mark and r["PTS"] > 0)))
 
+    @staticmethod
+    def h2h_note(rows):
+        """O'zaro uchrashuv qo'llangan bo'lsa (teng ballar ajratilsa) qisqa izoh."""
+        tied = [r for r in rows if r["HPTS"] or r["HGD"] or r["HGF"]]
+        if len(tied) < 2:
+            return None
+        return ("Ballar teng: %s. O'rinni avval [b]o'zaro uchrashuv[/b] "
+                "(ball → to'plar farqi → to'plar) belgiladi."
+                % ", ".join(r["name"] for r in tied[:4]))
+
+    def table_image(self, halves, fin):
+        """Jadvalning rasmga tushadigan ixcham ko'rinishi (ulashish uchun)."""
+        p = G.Glass(orientation="vertical", size_hint_y=None, spacing=dp(6),
+                    padding=(dp(14), dp(12)), radius=20,
+                    fill=(0.055, 0.08, 0.21, 1), border=(0.35, 0.75, 1, .55))
+        p.bind(minimum_height=p.setter("height"))
+        p.add_widget(G.TL("APEX [b]PRO LEAGUE[/b]", 17, G.YELLOW, bold=True, align="center",
+                          size_hint_y=None, height=dp(28)))
+        p.add_widget(G.TL(time.strftime("%d.%m.%Y %H:%M"), 11, G.MUTED, align="center",
+                          size_hint_y=None, height=dp(20)))
+        if halves:
+            for i, h in enumerate(halves, 1):
+                rows = self.standings(grp=h)
+                p.add_widget(G.TL("%d-guruh (guruh bosqichi)" % i, 12.5, G.CYAN, bold=True))
+                self._table_rows(p, rows, top_mark=1)
+                n = self.h2h_note(rows)
+                if n:
+                    p.add_widget(G.note(n, size=10))
+        else:
+            rows = self.standings()
+            self._table_rows(p, rows, top_mark=2)
+            n = self.h2h_note(rows)
+            if n:
+                p.add_widget(G.note(n, size=10))
+        if fin and fin["hs"] is not None and fin["hs"] != fin["as"]:
+            w = fin["home"] if fin["hs"] > fin["as"] else fin["away"]
+            p.add_widget(G.TL("[b]CHEMPION: %s[/b]  (%d:%d)"
+                              % (self.gname(w), fin["hs"], fin["as"]),
+                              13, G.YELLOW, bold=True, align="center"))
+        elif fin:
+            p.add_widget(G.TL("FINAL: %s — %s" % (self.gname(fin["home"]), self.gname(fin["away"])),
+                              12.5, G.WHITE, bold=True, align="center"))
+        tops = self.top_scorers(3)
+        if tops:
+            p.add_widget(G.TL("Eng ko'p gol urganlar", 12.5, G.CYAN, bold=True))
+            for pid, n in tops:
+                p.add_widget(G.TL("%s — %d ta" % (self.pname(pid), n), 12, G.WHITE))
+        return p
+
+    def top_scorers(self, n=3):
+        rows = [(p["id"], self.player_stats(p["id"])["goals"])
+                for p in self.d["players"] if p["group"] is not None]
+        rows = [r for r in rows if r[1] > 0]
+        rows.sort(key=lambda r: (-r[1], self.pname(r[0])))
+        return rows[:n]
+
+    def share_table_image(self):
+        """Jadvalni PNG qilib tayyorlaydi: ko'rib chiqish + 'PNG yuborish'."""
+        panel = self.table_image(self.stage_groups(), self.final_match())
+
+        def send(*a):
+            self.export_png(panel, "jadval",
+                            lambda path: share_file(path, "image/png", "Jadvalni ulashish")
+                            if path else None)
+        self.show_dialog("Jadval rasmi", content=panel, buttons=[
+            MDFlatButton(text="Yopish", on_release=self.close_dialog),
+            MDRaisedButton(text="PNG yuborish", on_release=send)])
+
+    def export_png(self, widget, name, callback):
+        """Vidjetni PNG ga aylantiradi (2× aniqlik) va callback(yo'l) chaqiriladi."""
+        png = os.path.join(self.user_data_dir, "export", "%s_%s.png"
+                           % (name, time.strftime("%Y%m%d_%H%M%S")))
+
+        def do(*a):
+            try:
+                os.makedirs(os.path.dirname(png), exist_ok=True)
+                widget.export_to_png(png, scale=2)
+                callback(png)
+            except Exception as e:
+                toast("Rasmga olishning ilovasi bo'lmadi: " + str(e)[:60])
+                callback(None)
+        # dialog bir kadr chizgandan keyingina to'liq o'lchanadi
+        Clock.schedule_once(do, 0.3)
+
     def refresh_table(self):
         box = self.b_table
         box.clear_widgets()
         box.add_widget(self.hero("Turnir jadvali va statistika"))
+        box.add_widget(G.solid_button("Jadvalni rasm (PNG) qilib ulashish",
+                                      self.share_table_image, h=46, fill=G.INDIGO))
         halves = self.stage_groups()
         if halves:
             for i, h in enumerate(halves, 1):
                 box.add_widget(self.header(f"[b]{i}-guruh jadvali (guruh bosqichi)[/b]"))
-                self._table_rows(box, self.standings(grp=h), top_mark=1)
+                rows = self.standings(grp=h)
+                self._table_rows(box, rows, top_mark=1)
+                n = self.h2h_note(rows)
+                if n:
+                    box.add_widget(self.note(n))
             box.add_widget(self.note("Har ikki guruh g'olibi FINAL da o'ynaydi.", 30))
         else:
             box.add_widget(self.header("[b]Turnir jadvali[/b]"))
-            self._table_rows(box, self.standings(), top_mark=2)
+            rows = self.standings()
+            self._table_rows(box, rows, top_mark=2)
+            n = self.h2h_note(rows)
+            if n:
+                box.add_widget(self.note(n))
         fin = self.final_match()
         if fin:
             box.add_widget(self.header("[b]FINAL[/b]"))

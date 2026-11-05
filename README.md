@@ -194,12 +194,24 @@ logodan tanlaydi yoki **telefondan o'z rasmini yuklaydi** (rasm siqilib bazada s
   3-o'rin va undan past jamoalar musobaqani yakunlaydi.
 - **8 tadan ko'p jamoa:** avtomatik guruh bosqichi (2 guruh), har guruhda bir davra,
   so'ng ikki guruh g'olibi FINAL da o'ynaydi.
+- **Ballar teng bo'lsa** avval **o'zaro uchrashuv** qaraladi: teng jamoalar o'zaro HAMMA
+  juftliklarni o'ynab bo'lgan bo'lsa, o'sha mini-jadvaldagi ball → to'plar farqi → to'plar
+  hisobga olinadi. Biror uchrashuv hali o'ynalmagan bo'lsa o'zaro qoida **qo'llanilmaydi**
+  (umumiy to'plar farqi asosiy bo'lib qoladi). Jadval ostida qaysi jamoalar shu qoida bilan
+  ajratilgani yozib chiqadi.
 
 ## Hakam ilovasi
 
 Admin "Hakamlar boshqaruvi" da hakam (ism + PIN) qo'shadi. Hakam **Apex Referee** ilovasida
 ism va PIN bilan kirib, gol va assistlarni kiritadi (hisob avtomatik hisoblanadi).
 Hakam jamoa kapitani yoki boshqa shaxs bo'lishi mumkin.
+
+**Sekundomer** (Hakam → Tarkib → "Hakam sekundomeri"): o'yin uchun jonli `mm:ss` soat,
+Boshlash/Pauza, bo'limi (1-/2-bo'lim, `CLOCK_HALF_MIN = 20` daqiqa) va "Nolga" tugmalari.
+Gol, almashinuv va kartochka kiritilganda soatning daqiqasi yozga `min` sifatida qo'shiladi,
+shuning uchun o'yin jurnali `12' · GOL — ...` ko'rinishida chiqadi. Soat **faqat shu
+telefonning `clock.json` faylida** yuradi — baza yozish huquqi hakamda yo'q, daqiqa esa
+gol yozivi bilan bazaga tushadi.
 
 ## Ilova yangilanishi
 
@@ -375,4 +387,45 @@ ishlaydi.
 ### Release
 `VERSION_CODE = 5`, `version.json` > `"version": 5`, to'rtala spec `version = 3.4`.
 Teg push qiling: `git tag v5 && git push origin v5`.
+
+## v6 — zaxira, o'zaro uchrashuv, avtomatik qulf, sekundomer, jadval rasmi
+
+- **Turnir zaxirasi (eksport / tiklash).** Admin panel → **Zaxira / tiklash** (yoki
+  Sozlamalar → TIZIM → "Turnir zaxirasi"). Butun turnir `to_remote()` ko'rinishida
+  `<user_data_dir>/backups/apex_YYYYmmdd_HHMMSS_<yorliq>.json` fayliga yoziladi, faylni
+  **yuborish** (Telegram/Drive) `content://` URI orqali, **tiklash** esa fayl tanlanadi.
+  Eng yangi 20 ta zaxira saqlanadi (`BACKUP_KEEP`). Xavfli amallar oldidan
+  (to'liq tozalash, guruh/kapitan/o'yinchi o'chirish, taqsimni tozalash, tiklash)
+  **avtomatik zaxira** yaratiladi — u amalni to'xtatmaydi, faqat xabar qiladi.
+  Tiklashda hozirgi ma'lumot to'liq almashtiriladi, `store.save()` differensial PATCH
+  bo'lgani uchun bazada faylda yo'q tugunlar o'chadi.
+- **O'zaro uchrashuv** endi jadvalda uchinchi ustun emas, ballar tenglashganda
+  avtomatik ishlaydigan qoida (yuqoridagi "Turnir formati" ga qarang).
+- **Tarkibning avtomatik qulfi.** Admin → **Tarkib qulfi** da o'yinga boshlanish vaqti
+  (`05.11 18:30`) qo'yiladi, bazada `matches/$mid/kick` (epoch sekund). Vaqt yetganda
+  (`LINEUP_LOCK_MIN = 15` daqiqa oldin) tarkib **barcha telefonlarda** yopiladi: kapitan
+  tugmasi ko'rinmaydi, `set_lineup()` rad etadi, holat `tarkib QULFLANGAN (avtomatik)`.
+  Admin ilovasi qulfni bazaga ham yozadi (`lineup_locked = true`, har 60 soniyada tekshiradi),
+  shunda server qoidalari ham boshqa qurilmalarning yozuvini qaytaradi. Vaqt o'chirilsa
+  qulf faqat qo'lab yoki natija orqali bo'ladi.
+- **Hakam sekundomeri** — "Hakam ilovasi" bo'limiga qarang.
+- **Jadvalni PNG qilib ulashish.** Jadval tab'ining boshidagi tugma jadvalni
+  (guruhlar, o'zaro uchrashuv izohi, chempion, bombardirlar) shisha panelga yig'adi,
+  ko'rib chiqish oynasini ochadi va **"PNG yuborish"** bilan 2× aniqlikdagi rasmga
+  aylantiradi (`export_to_png(scale=2)` → MediaStore → ACTION_SEND).
+
+**Xavfsizlik:** zaxira fayli bazadagi hamma narsani olib chiqadi — shu jumladan kapitan
+`cap_pass_hash` va hakam `pin_hash` lari. Ular Realtime Database'da allaqachon hamma
+uchun o'qiladigan (`rules: ".read": true`), ya'ni fayl yangi sir qo'shmaydi; lekin
+buni begonalarga yubormang.
+
+**Majburiy qadam:** `database.rules.json` o'zgarmadi — `kick` maydoni `matches` tugunida
+va uni faqat admin yozadi. Faqat `matches/$mid/goals` ga hakam yozoladi, shuning uchun
+sekundomer bazaga yozilmaydi.
+
+### Tekshiruv
+`python -u scripts/render_check.py all` endi bularni ham sinaydi: o'zaro uchrashuv tartibi
+(tugallanmagan klasterda qoida ishlatilmasligi bilan), avtomatik qulf (`kick` holatlari va
+bazaga yozish), sekundomer (bo'limlar, daqiqa, `clock.json`, panel), zaxira (yozish, o'qish,
+tiklash) va jadval PNG faylini.
 

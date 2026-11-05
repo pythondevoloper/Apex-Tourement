@@ -7,6 +7,10 @@ Ishga tushirish (apex/ papkasidan):
 """
 import os
 import sys
+import copy
+import json
+import time
+import tempfile
 import traceback
 import subprocess
 
@@ -61,13 +65,15 @@ def fake_data():
                     player(406, "Nodira Ismoilova", 17, None, "FW", 65),
                     player(407, "Bekzod Alimov", 18, None, "MF", 73)],
         "matches": [{"id": 1, "home": G1, "away": G2, "hs": 2, "as": 1, "round": 1,
-                     "stage": "group", "date": 1730000000, "lineup_locked": True,
+                     "stage": "group", "date": 1730000000, "kick": 1730000000,
+                     "lineup_locked": True,
                      "lineups": {str(G1): [101, 102, 103], str(G2): [201, 202]},
                      "subs": [{"team": G1, "out": 103, "in": 102, "ts": 1730001000}],
                      "goals": [{"team": G1, "scorer": 101, "assist": 201, "ts": 1730000500}],
                      "cards": [{"pid": 202, "type": "yellow", "ts": 1730000800}]},
                     {"id": 2, "home": G2, "away": G1, "hs": None, "as": None, "round": 2,
                      "stage": "final", "date": 1730100000, "lineup_locked": False,
+                     "kick": int(time.time()) + 30 * 60,
                      "lineups": {}, "subs": [], "goals": [], "cards": []}],
         "notifs": [{"id": 1, "to": "all", "text": "Sinov xabarnomasi",
                     "ts": 1730000000, "read": {}}],
@@ -100,19 +106,27 @@ DIALOGS = {
                ("player_card", lambda a: (102,), "card_76"),
                ("player_card", lambda a: (103,), "card_66"),
                ("player_card", lambda a: (301,), "card_58"),
-               ("token_history", lambda a: (101,))],
+               ("token_history", lambda a: (101,)), ("share_table_image", lambda a: ()),
+               ("_h2h_check", lambda a: ())],
     "referee": [("show_notifs", lambda a: ()), ("player_card", lambda a: (101,)),
-                ("lineup_dialog", lambda a: (G1, 1)), ("match_journal", lambda a: (a.match(1),))],
+                ("lineup_dialog", lambda a: (G1, 1)), ("match_journal", lambda a: (a.match(1),)),
+                ("clock_dialog", lambda a: ()), ("share_table_image", lambda a: ()),
+                ("_clock_check", lambda a: ()), ("_h2h_check", lambda a: ())],
     "captain": [("profile_dialog", lambda a: ()), ("show_notifs", lambda a: ()),
                 ("lineup_dialog", lambda a: (G1, 1)), ("captain_transfers", lambda a: ()),
                 ("negotiate_dialog", lambda a: (5,)), ("offer_dialog", lambda a: (202,)),
                 ("market_dialog", lambda a: ()), ("player_card", lambda a: (101,), "card_88"),
-                ("_cap_login_check", lambda a: ())],
+                ("_cap_login_check", lambda a: ()), ("_lock_check", lambda a: ())],
     "admin": [("admin_groups_menu", lambda a: ()), ("admin_goal_menu", lambda a: ()),
               ("admin_card_menu", lambda a: ()), ("admin_refs_menu", lambda a: ()),
               ("admin_market_menu", lambda a: ()), ("admin_enter_result", lambda a: ()),
               ("admin_wipe_all", lambda a: ()), ("admin_cap_logins", lambda a: ()),
-              ("admin_remove_player", lambda a: ()), ("_split_check", lambda a: ()),
+              ("admin_remove_player", lambda a: ()),
+              ("admin_lineup_manage", lambda a: ()), ("admin_backup_menu", lambda a: ()),
+              ("_split_check", lambda a: ()), ("_png_check", lambda a: ()),
+              ("_lock_check", lambda a: ()), ("_h2h_check", lambda a: ()),
+              ("_backup_check", lambda a: ()), ("_clock_check", lambda a: ()),
+              # oxirida: bu ikkisi guruh/o'yinlarni o'chirib tashlaydi
               ("_remove_check", lambda a: ())],
 }
 
@@ -176,9 +190,13 @@ def check_dialogs(app, kind, errors, done):
             return
         entry = plan[i]
         name, make_args = entry[0], entry[1]
-        if name in ("_split_check", "_cap_login_check", "_remove_check"):
+        if name in SENTINELS:
             # dialog emas: o'zi tekshiruv bo'lib, tashqarida qurilishni buzmasligi kerak
-            SENTINELS[name](app, errors)
+            try:
+                SENTINELS[name](app, errors)
+            except Exception as e:
+                errors.append("sentinel %s: %r" % (name, e))
+                traceback.print_exc()
             check_screens(kind, errors)
             Clock.schedule_once(lambda *a: step(i + 1), 0.12)
             return
@@ -320,10 +338,294 @@ def check_cap_group_remove(app, errors):
     print("  [admin] kapitan+guruh o'chirish: guruh/o'yin/izlar ketdi, 1 guruh qoldi")
 
 
+# ---------------- yangi funksiyalar uchun o'z-tekshiruvlar ----------------
+def _snap(app):
+    return copy.deepcopy(app.d)
+
+
+def _restore(app, snap):
+    app.d.clear()
+    app.d.update(snap)
+
+
+def _need_match(app, mid):
+    """Oldingi tekshiruvlar (o'chirish kaskadi) o'yinni olib tashlasa: soxtani qayta qo'yamiz."""
+    if app.match(mid) is None:
+        _restore(app, fake_data())
+
+
+def check_h2h(app, errors):
+    """O'zaro uchrashuv: teng balli klasterda umumiy to'plar farqini yengadi."""
+    snap = _snap(app)
+    A, B, C, D, E, F = 11, 12, 13, 14, 15, 16
+    names = {A: "Alfa", B: "Beta", C: "Gamma", D: "Delta", E: "Epsilon", F: "Fukron"}
+
+    def mt(i, h, a, hs, as_):
+        return {"id": i, "home": h, "away": a, "hs": hs, "as": as_, "round": 1,
+                "stage": "group", "lineup_locked": True, "lineups": {},
+                "subs": [], "goals": [], "cards": []}
+
+    def grp(gid):
+        return {"id": gid, "name": names[gid], "captain_id": None, "ptokens": 0,
+                "logo": 1, "logo_img": None, "cap_login": None, "cap_pass_hash": None}
+
+    def order(rows):
+        return [r["name"] for r in rows]
+
+    try:
+        # 1) Alfa-Beta va Gamma-Delta teng ballar; o'zaro natija umumiy farqni yengadi
+        app.d["groups"] = [grp(g) for g in (A, B, C, D)]
+        app.d["matches"] = [mt(1, A, B, 1, 0), mt(2, C, A, 3, 0), mt(3, D, A, 3, 0),
+                            mt(4, B, C, 8, 0), mt(5, D, B, 3, 0), mt(6, C, D, 1, 0)]
+        rows = app.standings()
+        if order(rows) != ["Gamma", "Delta", "Alfa", "Beta"]:
+            errors.append("o'zaro uchrashuv: tartib %s (kutilgan Gamma, Delta, Alfa, Beta)"
+                          % order(rows))
+        by = {r["name"]: r for r in rows}
+        if by["Alfa"]["PTS"] != 3 or by["Beta"]["PTS"] != 3:
+            errors.append("o'zaro uchrashuv: ballar kutilgandek emas %s" %
+                          [(r["name"], r["PTS"]) for r in rows])
+        if by["Alfa"]["HPTS"] != 3 or by["Gamma"]["HPTS"] != 3 or by["Delta"]["HGD"] != -1:
+            errors.append("o'zaro uchrashuv: mini-jadval ballari noto'g'ri %s" %
+                          [(r["name"], r["HPTS"], r["HGD"]) for r in rows])
+        note = app.h2h_note(rows)
+        if not note or "Alfa" not in note or "o'zaro uchrashuv" not in note:
+            errors.append("o'zaro uchrashuv: izoh chiqmadi (%r)" % note)
+
+        # 2) klaster to'liq o'ynalmagan bo'lsa o'zaro uchrashuv QO'LLANILMAIDI
+        app.d["groups"] = [grp(g) for g in (A, B, C, D, E, F)]
+        app.d["matches"].append(mt(7, E, F, 1, 0))
+        rows = app.standings()
+        if order(rows) != ["Gamma", "Delta", "Beta", "Epsilon", "Alfa", "Fukron"]:
+            errors.append("tugallanmagan klaster: tartib %s (o'zaro qulf ishlatilmasligi "
+                          "kerak edi)" % order(rows))
+        by = {r["name"]: r for r in rows}
+        if by["Alfa"]["HPTS"] or by["Epsilon"]["HPTS"]:
+            errors.append("tugallanmagan klaster: baribir o'zaro ball qo'llandi")
+        print("  [table] o'zaro uchrashuv: %s | izoh: %s" %
+              (order(app.standings()), "bor" if app.h2h_note(app.standings()) else "yo'q"))
+    finally:
+        _restore(app, snap)
+
+
+def check_lock(app, errors):
+    """Tarkib avtomatik qulfi: boshlanish vaqtidan LINEUP_LOCK_MIN oldin yopiladi."""
+    from common import LINEUP_LOCK_MIN
+    snap = _snap(app)
+    _need_match(app, 2)
+    now = int(time.time())
+    m = app.match(2)
+    real_save = app.store.save
+    try:
+        m["lineup_locked"] = False
+        m["kick"] = None
+        if app.lineup_closed(m) or app.lock_note(m) != "tarkib ochiq":
+            errors.append("qulf: vaqt qo'ylmagan o'yin yopiq chiqdi (%s)" % app.lock_note(m))
+        m["kick"] = now + (LINEUP_LOCK_MIN - 5) * 60
+        if not app.auto_locked(m) or not app.lineup_closed(m):
+            errors.append("qulf: %d daq. oldin avtomatik yopilishi kerak edi" % LINEUP_LOCK_MIN)
+        if "avtomatik" not in app.lock_note(m):
+            errors.append("qulf: matnda avtomatik deyilmadi (%s)" % app.lock_note(m))
+        if app.set_lineup(m["home"], m["id"], [101, 102, 103]) is not False:
+            errors.append("qulf: avtomatik yopilgan o'yinga tarkib qabul qilindi")
+        m["kick"] = now + 120 * 60
+        if app.lineup_closed(m) or "daq. keyin" not in app.lock_note(m):
+            errors.append("qulf: 2 soatlik o'yin ochiq + hisoblagich bo'lishi kerak (%s)"
+                          % app.lock_note(m))
+        if not app.lineup_closed(app.match(1)):
+            errors.append("qulf: natija kiritilgan o'yin yopiq emas")
+        # admin qulfni bazaga ham yozadi (boshqa telefonlar ham rad etilishi uchun)
+        if hasattr(app, "auto_lock_persist"):
+            app.fb.is_admin = lambda: True
+            writes = []
+            app.store.save = lambda *a: (writes.append(1), True)[1]
+            m["kick"] = now - 60
+            app.auto_lock_persist()
+            if not m["lineup_locked"] or not writes:
+                errors.append("qulf: auto_lock_persist bazaga yozmadi (writes=%s)" % writes)
+            if "QULFLANGAN" not in app.lock_note(m):
+                errors.append("qulf: yozilgandan keyin matn %s" % app.lock_note(m))
+            # ikkinchi marta: allaqachon qulflangan -> yozuv takrorlanmasligi kerak
+            first = len(writes)
+            writes[:] = []
+            app.auto_lock_persist()
+            if writes:
+                errors.append("qulf: avtomatik qulf takror yozdi")
+            print("  [admin] avtomatik qulf: yozuvlar=%d/%d (takrorlanmasligi kerak), holat=%s"
+                  % (first, len(writes), app.lock_note(m)))
+        else:
+            m["kick"] = now - 60
+            if not app.lineup_closed(m) or "avtomatik" not in app.lock_note(m):
+                errors.append("qulf: bazaga yozmasdan ham mijozda yopiq turishi kerak")
+            print("  [%s] avtomatik qulf (faqat mijozda): %s" %
+                  (app.__class__.__name__, app.lock_note(m)))
+    finally:
+        app.store.save = real_save
+        _restore(app, snap)
+
+
+def check_clock(app, errors):
+    """Hakam sekundomeri: bo'limlar, daqiqa hisobi, faylga saqlash va panel qurilishi."""
+    import glassui as G
+    from common import CLOCK_HALF_MIN, RefClockPanel
+    tmp = tempfile.mkdtemp(prefix="apex_clock_")
+    app._clock_path = lambda: os.path.join(tmp, "clock.json")
+    app._clocks = {}
+    mid = 2
+    _need_match(app, mid)
+    panel = None
+    try:
+        app.clock_reset(mid)
+        if app.clock_minute(mid) is not None:
+            errors.append("soat: ishlamagan holatda daqiqa None bo'lmadi")
+        st = app.clock_state(mid)
+        st["acc"] = 300
+        app.clock_save(st)
+        if app.clock_minute(mid) != 300 // 60 + 1:
+            errors.append("soat: 1-bo'lim 05:00 -> %r daqiqa" % app.clock_minute(mid))
+        app.clock_next_half(mid)
+        st = app.clock_state(mid)
+        if st["half"] != 2 or st["acc"] != 0 or app.clock_minute(mid) is not None:
+            errors.append("soat: 2-bo'limga o'tish noto'g'ri (%r)" % st)
+        st["acc"] = 60
+        app.clock_save(st)
+        want = CLOCK_HALF_MIN + 1 + 1
+        if app.clock_minute(mid) != want:
+            errors.append("soat: 2-bo'lim 01:00 -> %r (kutilgan %d)"
+                          % (app.clock_minute(mid), want))
+        # holat faylga yozilganmi (keshni o'chirib qayta o'qiymiz)
+        app._clocks = None
+        if app.clock_minute(mid) != want:
+            errors.append("soat: holat clock.json ga yozilmadi")
+        # jonli soat: panel va yurish matni
+        st = app.clock_state(mid)
+        st["acc"] = 125
+        st["since"] = int(time.time())
+        app.clock_save(st)
+        if not app.clock_running_text(mid).startswith("  ·  \u23f1"):
+            errors.append("soat: yugurayotgan matn chiqmadi (%r)" % app.clock_running_text(mid))
+        panel = RefClockPanel(mid)
+        if ":" not in panel.time_lbl.text or "2-bo'lim" not in panel.half_lbl.text:
+            errors.append("soat: panel matni %r / %r" % (panel.time_lbl.text, panel.half_lbl.text))
+        if panel.run_btn.lbl.text != "Pauza":
+            errors.append("soat: yurganda tugma %r" % panel.run_btn.lbl.text)
+        panel.toggle()
+        if app.clock_state(mid)["since"] is not None or panel.run_btn.lbl.text != "Boshlash":
+            errors.append("soat: pauza ishlamadi")
+        # dialog orqali ham ochiladi (hakam menyusi shu yo'l bilan kiradi)
+        app.clock_dialog()
+        d = getattr(app, "dialog", None)
+        if not isinstance(d, G.Dialog):
+            errors.append("soat: clock_dialog ochilmadi")
+        else:
+            app.close_dialog()
+        print("  [clock] %s daqiqa, panel=%s, fayl=%s" %
+              (want, panel.time_lbl.text, os.path.basename(app._clock_path())))
+    finally:
+        if panel is not None and panel._ev is not None:
+            panel._ev.cancel()
+
+
+def check_backup(app, errors):
+    """Zaxira: JSON eksport, tekshiruv va tiklash (butun turnir almashtiriladi)."""
+    snap = _snap(app)
+    _need_match(app, 2)
+    tmp = tempfile.mkdtemp(prefix="apex_backup_")
+    app.backup_dir = lambda: tmp
+    try:
+        app.match(2)["kick"] = 1700000000
+        path = app.backup_now("sinov")
+        if not path or not os.path.exists(path):
+            errors.append("zaxira: fayl yozilmadi (%r)" % path)
+            return
+        with open(path, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+        for k in ("meta", "groups", "players", "matches", "lineups"):
+            if k not in raw:
+                errors.append("zaxira: '%s' tuguni yo'q" % k)
+        if raw.get("_apex", {}).get("tag") != "sinov":
+            errors.append("zaxira: yorliq saqlanmadi (%r)" % raw.get("_apex"))
+        if int(raw["matches"]["2"]["kick"]) != 1700000000:
+            errors.append("zaxira: boshlanish vaqti tushib qoldi")
+        data = app.backup_read(path)
+        if not data:
+            errors.append("zaxira: o'qib bo'lmadi")
+            return
+        if [len(data[c]) for c in ("groups", "players", "matches")] != \
+           [len(app.d[c]) for c in ("groups", "players", "matches")]:
+            errors.append("zaxira: sonlar mos emas %s (hozir %s)" %
+                          (app.restore_counts(data), app.restore_counts(app.d)))
+        if app.backup_read(os.path.join(tmp, "apex_yoq.json")) is not None:
+            errors.append("zaxira: yo'q fayl o'qildi")
+        # tiklash: buzib tashlab, fayldan qaytaramiz (tasdiq dialog avtomatik 'ha')
+        jobs = []
+        real_confirm = app.confirm_dialog
+        app.confirm_dialog = lambda title, msg, cb, *a, **k: jobs.append(cb)
+        try:
+            app.d["groups"] = []
+            app.d["matches"] = []
+            app.admin_restore(data, "sinov")
+        finally:
+            app.confirm_dialog = real_confirm
+        if not jobs:
+            errors.append("tiklash: tasdiq dialog ochilmadi")
+            return
+        jobs[0]()
+        if [len(app.d[c]) for c in ("groups", "players", "matches")] != \
+           [len(data[c]) for c in ("groups", "players", "matches")]:
+            errors.append("tiklash: fayldagi sonlar qaytmadi (%s)" % app.restore_counts(app.d))
+        if app.match(2)["kick"] != 1700000000:
+            errors.append("tiklash: boshlanish vaqti tiklanmadi")
+        if len(app.backup_files()) < 2:
+            errors.append("tiklash: avtomatik zaxira yozilmadi")
+        print("  [backup] %s -> %d fayl, tiklandi %s" %
+              (os.path.basename(path), len(app.backup_files()), app.restore_counts(app.d)))
+    finally:
+        _restore(app, snap)
+
+
+def check_png(app, errors):
+    """Jadvalning PNG rasmi: panel quriladi, dialog ochiladi va faylga yoziladi."""
+    import glassui as G
+    from kivy.clock import Clock
+    panel = app.table_image(app.stage_groups(), app.final_match())
+    if len(panel.children) < 3:
+        errors.append("png: jadval paneli bo'sh (%d vidjet)" % len(panel.children))
+    app.share_table_image()
+    d = getattr(app, "dialog", None)
+    if not isinstance(d, G.Dialog):
+        errors.append("png: share_table_image dialog ochmadi")
+        return
+
+    def got(path):
+        if not path or not os.path.exists(path):
+            errors.append("png: fayl yozilmadi (%r)" % path)
+        else:
+            size = os.path.getsize(path)
+            if size < 2000:
+                errors.append("png: fayl juda kichik (%d bayt)" % size)
+            else:
+                print("  [png] jadval rasmi: %d bayt" % size)
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+    app.export_png(d.card, "rc_jadval", got)
+    # dialog export tugagandan keyin yopilsin (lekin orada boshqa dialog ochilgan bo'lsa emas)
+    Clock.schedule_once(lambda *a: app.close_dialog()
+                        if getattr(app, "dialog", None) is d else None, 0.5)
+
+
 # Dialog ro'yxatiga aralashgan o'z-tekshiruvlar (ichki jarayonni sinaydi)
 SENTINELS = {"_split_check": check_split,
              "_cap_login_check": check_cap_login,
-             "_remove_check": check_remove}
+             "_remove_check": check_remove,
+             "_h2h_check": check_h2h,
+             "_lock_check": check_lock,
+             "_clock_check": check_clock,
+             "_backup_check": check_backup,
+             "_png_check": check_png}
 
 
 # Admin tab'larining konteyneri b_<tab> emas (Kivy App.__getattr__ proksisi

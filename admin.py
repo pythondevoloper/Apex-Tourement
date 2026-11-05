@@ -224,6 +224,10 @@ class AdminMixin:
              hx("#F87171"), self.admin_remove_player),
             ("shield-half-full", "Kapitan loginlari", "Login berish / parolni tiklash",
              hx("#22D3EE"), self.admin_cap_logins),
+            ("lock-check", "Tarkib qulfi", "Boshlanish vaqti va avtomatik qulf", hx("#7C5CFF"),
+             self.admin_lineup_manage),
+            ("content-save-settings-outline", "Zaxira / tiklash", "Turnirni JSON ga eksport qilish",
+             hx("#14B8A6"), self.admin_backup_menu),
         ]
         grid = G.GridLayout(cols=2, spacing=dp(12), size_hint_y=None,
                             row_default_height=dp(76), row_force_default=True)
@@ -339,6 +343,10 @@ class AdminMixin:
         box.add_widget(G.section_label("MA'LUMOTLAR"))
         box.add_widget(self._set_group([
             self._link_row("O'yin jadvali", "tuzish", self.admin_make_fixtures),
+            self._link_row("Tarkib qulfi va vaqti",
+                           str(sum(1 for m in self.d["matches"] if self.lineup_closed(m)))
+                           + "/" + str(len(self.d["matches"])) + " qulflangan",
+                           self.admin_lineup_manage),
             self._link_row("Hakamlar", str(len(self.d["refs"])), self.admin_refs_menu),
             self._link_row("Yordamchilar", str(len(self.d["assistants"])), self.admin_assistants_menu),
             self._link_row("Market", str(len(self.d["market"])), self.admin_market_menu),
@@ -352,6 +360,8 @@ class AdminMixin:
         box.add_widget(G.section_label("TIZIM"))
         box.add_widget(self._set_group([
             self._link_row("Token boshqaruvi", "", self.admin_tokens),
+            self._link_row("Turnir zaxirasi (backup)",
+                           str(len(self.backup_files())) + " fayl", self.admin_backup_menu),
             self._link_row("Davomat jarimalari", "", self.admin_penalty),
             self._link_row("Parolni o'zgartirish", "", self.admin_change_pw),
             self._link_row("Til", "O'zbekcha", None),
@@ -465,6 +475,7 @@ class AdminMixin:
     def _delete_captain_with_group(self, pid):
         if not self.require_admin():
             return
+        self.auto_backup("kapitan o'chirish")
         g = self.captain_group(pid)
         if g:
             self._purge_group(g["id"])
@@ -479,6 +490,7 @@ class AdminMixin:
     def _remove_player(self, pid):
         if not self.require_admin():
             return
+        self.auto_backup("o'yinchi o'chirish")
         self.purge_player(pid)
         self.d["players"] = [p for p in self.d["players"] if p["id"] != pid]
         if self.load_me().get("pid") == pid:
@@ -702,6 +714,7 @@ class AdminMixin:
     def _delete_group(self, gid):
         if not self.require_admin():
             return
+        self.auto_backup("guruh o'chirish")
         self._purge_group(gid)
         self.store.save()
         self.refresh_all()
@@ -937,7 +950,11 @@ class AdminMixin:
                     def got_in(iid):
                         if not self.require_admin():
                             return
-                        m["subs"].append({"team": gid, "out": oid, "in": iid, "ts": now_ts()})
+                        s = {"team": gid, "out": oid, "in": iid, "ts": now_ts()}
+                        mn = self.clock_minute(mid)
+                        if mn:
+                            s["min"] = mn
+                        m["subs"].append(s)
                         m["lineup_locked"] = True
                         self.store.save()
                         self.refresh_all()
@@ -1019,7 +1036,11 @@ class AdminMixin:
                 def got_type(t):
                     if not self.require_admin():
                         return
-                    m["cards"].append({"pid": pid, "type": t, "ts": now_ts()})
+                    c = {"pid": pid, "type": t, "ts": now_ts()}
+                    mn = self.clock_minute(mid)
+                    if mn:
+                        c["min"] = mn
+                    m["cards"].append(c)
                     if t == "red":
                         self.add_tokens(pid, -RED_PENALTY, "Qizil kartochka")
                     self.store.save()
@@ -1054,30 +1075,88 @@ class AdminMixin:
         self.choose_dialog("Qaysi kartochka?", opts, chosen)
 
     def admin_lineup_manage(self):
+        """O'yin boshlanish vaqti va tarkib qulfi (avtomatik qulf shu vaqtdan kelib chiqadi)."""
         if not self.require_admin():
             return
-        opts = [(f"{self.match_label(m)}  [{'qulf' if m['lineup_locked'] else 'ochiq'}]", m["id"])
+        opts = [(f"{self.match_label(m)}  [{self.lock_note(m)}]", m["id"])
                 for m in self.d["matches"]]
 
         def chosen(mid):
             m = self.match(mid)
+            kick = self.kick_ts(m)
 
             def toggle_lock():
                 m["lineup_locked"] = not m["lineup_locked"]
                 self.store.save()
                 self.refresh_all()
-                toast("Qulflandi" if m["lineup_locked"] else "Ochildi")
+                if m["lineup_locked"]:
+                    toast("Qulflandi")
+                elif self.auto_locked(m):
+                    toast("Ochildi, lekin boshlanish vaqti o'tgan — avtomatik qulf yopib turadi. "
+                          "Vaqtga o'zgartirish kiriting.")
+                else:
+                    toast("Ochildi")
 
             def clear(gid):
                 m["lineups"][str(gid)] = []
                 self.store.save()
                 self.refresh_all()
                 toast("Tozalandi")
+
             acts = [("Qulflash / Ochish", toggle_lock),
-                    (f"{self.gname(m['home'])} tarkibini tozalash", lambda: clear(m["home"])),
-                    (f"{self.gname(m['away'])} tarkibini tozalash", lambda: clear(m["away"]))]
+                    ("Boshlanish vaqtini belgilash",
+                     lambda: self.input_dialog(
+                         "Boshlanish vaqti (kun.oy soat:daq)",
+                         "05.11 18:30", lambda txt, mm=m: self._set_kick(mm, txt),
+                         text=time.strftime("%d.%m %H:%M", time.localtime(kick)) if kick else ""))]
+            if kick:
+                acts.append(("Boshlanish vaqtini o'chirish", lambda: self._set_kick(m, None)))
+            acts += [(f"{self.gname(m['home'])} tarkibini tozalash", lambda: clear(m["home"])),
+                     (f"{self.gname(m['away'])} tarkibini tozalash", lambda: clear(m["away"]))]
             self.choose_dialog("Amal", acts, lambda fn: fn())
         self.choose_dialog("Qaysi o'yin?", opts, chosen)
+
+    def _set_kick(self, m, txt):
+        """Boshlanish vaqtini saqlaydi (None — o'chirish). Tarkib qulfi shu vaqtdan hisoblanadi."""
+        if txt is None:
+            m["kick"] = None
+            self.store.save()
+            self.refresh_all()
+            toast("Boshlanish vaqti o'chirildi — endi tarkib faqat qo'lab qulflanadi")
+            return
+        t = None
+        for fmt in ("%d.%m %H:%M", "%d.%m.%Y %H:%M"):
+            try:
+                t = time.strptime((txt or "").strip(), fmt)
+                break
+            except ValueError:
+                continue
+        if not t:
+            toast("Format: 05.11 18:30 (kun.oy soat:daqiqa)")
+            return
+        year = t.tm_year if t.tm_year != 1900 else time.localtime().tm_year
+        ts = int(time.mktime((year, t.tm_mon, t.tm_mday, t.tm_hour, t.tm_min, 0, 0, 0, -1)))
+        m["kick"] = ts
+        if self.store.save():
+            self.refresh_all()
+            toast("Boshlanishi %s — tarkib %s gacha ochiq"
+                  % (time.strftime("%d.%m %H:%M", time.localtime(ts)),
+                     time.strftime("%d.%m %H:%M", time.localtime(self.lock_at(m)))))
+
+    def auto_lock_persist(self, *a):
+        """Boshlanishiga LINEUP_LOCK_MIN daqiqa qolganda qulfni bazaga ham yozadi (barcha telefonlar uchun)."""
+        if not self.fb.is_admin():
+            return
+        due = [m for m in self.d["matches"]
+               if m["hs"] is None and not m["lineup_locked"] and self.auto_locked(m)]
+        if not due:
+            return
+        for m in due:
+            m["lineup_locked"] = True
+        if self.store.save():
+            self.refresh_all()
+            toast("Tarkib avtomatik qulflandi: %s"
+                  % ", ".join(self.match_label(m) for m in due[:3]))
 
     def admin_random_split(self):
         if not self.require_admin():
@@ -1158,6 +1237,7 @@ class AdminMixin:
         def do():
             if not self.require_admin():
                 return
+            self.auto_backup("taqsimni tozalash")
             for p in self.d["players"]:
                 if not self.is_captain(p["id"]):
                     p["group"] = None
@@ -1190,6 +1270,7 @@ class AdminMixin:
     def _wipe_all(self):
         if not self.require_admin():
             return
+        self.auto_backup("to'liq tozalash")
         self.d["groups"] = []
         self.d["players"] = []
         self.d["matches"] = []
@@ -1199,6 +1280,115 @@ class AdminMixin:
         self.store.save()
         self.refresh_all()
         toast("Guruhlar va o'yinchilar o'chirildi")
+
+    # ---------------- ZAXIRA: eksport / tiklash ----------------
+    BACKUP_KEEP = 20      # shu qadar eng yangi zaxira qurilmada saqlanadi
+
+    def backup_dir(self):
+        d = os.path.join(self.user_data_dir, "backups")
+        os.makedirs(d, exist_ok=True)
+        return d
+
+    def backup_files(self):
+        """Shu qurilmadagi zaxira fayllar (yangidan eskiga tartibda)."""
+        try:
+            return sorted([f for f in os.listdir(self.backup_dir())
+                           if f.startswith("apex_") and f.endswith(".json")], reverse=True)
+        except Exception:
+            return []
+
+    def backup_now(self, tag="qo'lab"):
+        """Butun turnir snapshot'ini JSON ga yozadi; eski zaxiralar siqib chiqariladi."""
+        slug = "".join(c for c in (tag or "").lower() if c.isalnum() or c in "-_")[:28] or "backup"
+        name = "apex_%s_%s.json" % (time.strftime("%Y%m%d_%H%M%S"), slug)
+        try:
+            payload = to_remote(self.d)
+            payload["_apex"] = {"ts": now_ts(), "tag": tag, "ver": VERSION_CODE}
+            with open(os.path.join(self.backup_dir(), name), "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False)
+            for old in self.backup_files()[self.BACKUP_KEEP:]:
+                try:
+                    os.remove(os.path.join(self.backup_dir(), old))
+                except Exception:
+                    pass
+            return os.path.join(self.backup_dir(), name)
+        except Exception as e:
+            toast("Zaxira yozilmadi: " + str(e)[:70])
+            return None
+
+    def auto_backup(self, why):
+        """Xavfli amaldan oldin. Fayl xatosi amalni to'xtatmasligi kerak."""
+        if self.backup_now("avto: " + why):
+            toast("Zaxira yaratildi (%s)" % why)
+
+    def backup_read(self, path):
+        """Zaxira faylni tekshirib store.data ko'rinishida qaytaradi (xato bo'lsa None)."""
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+        except Exception as e:
+            toast("Fayl o'qilmadi: " + str(e)[:70])
+            return None
+        if not isinstance(raw, dict) or not isinstance(raw.get("groups"), dict) \
+                or not isinstance(raw.get("players"), dict):
+            toast("Bu APEX zaxira fayli emas")
+            return None
+        return from_remote(raw)
+
+    def restore_counts(self, data):
+        return "%d guruh, %d o'yinchi, %d o'yin" % (
+            len(data["groups"]), len(data["players"]), len(data["matches"]))
+
+    def admin_restore(self, data, label):
+        def do():
+            self.auto_backup("tiklashdan oldin")
+            merge_into(self.d, data)
+            if self.store.save():
+                toast("Turnir tiklandi")
+            self.refresh_all()
+        self.confirm_dialog(
+            "Zaxiradan tiklash",
+            "%s\n\nTiklanadi: %s.\n\nHozirgi ma'lumot (%s) fayldagisi bilan to'liq almashtiriladi "
+            "va bazaga yoziladi. Tiklashdan oldin avtomatik zaxira yaratiladi."
+            % (label, self.restore_counts(data), self.restore_counts(self.d)),
+            do)
+
+    def admin_backup_menu(self):
+        if not self.require_admin():
+            return
+        files = self.backup_files()
+
+        def create():
+            if self.backup_now("qo'lab"):
+                self.refresh_settings()
+
+        def send():
+            if not files:
+                toast("Avval zaxira yarating")
+                return
+            share_file(os.path.join(self.backup_dir(), files[0]), "application/json",
+                       "Zaxira faylni yuborish")
+
+        def from_file():
+            def got(path):
+                data = self.backup_read(path)
+                if data:
+                    self.admin_restore(data, "Tanlangan fayl: " + os.path.basename(path))
+            pick_media_file("application/json", "json", "APEX zaxirasi", got)
+
+        def from_app(name):
+            data = self.backup_read(os.path.join(self.backup_dir(), name))
+            if data:
+                self.admin_restore(data, "Qurilmadagi zaxira: " + name)
+
+        opts = [("Zaxira yaratish (JSON fayl)", create),
+                ("Zaxira faylni yuborish", send),
+                ("Fayldan tiklash", from_file)]
+        if files:
+            opts.append(("Shu qurilmadagi zaxiralar (%d)" % len(files),
+                         lambda: self.choose_dialog("Zaxiralar", [(f, f) for f in files],
+                                                   from_app)))
+        self.choose_dialog("Turnir zaxirasi", opts, lambda fn: fn())
 
     # ---------------- APEX TOKEN: admin qo'shadi / ayiradi ----------------
     def admin_tokens(self):
@@ -1600,6 +1790,8 @@ class AdminApp(AdminMixin, LeagueApp):
         self.sm.add_widget(LoginScreen(name="login", md_bg_color=NAVY))
         self.setup_screen = SetupScreen(name="setup", md_bg_color=NAVY)
         self.sm.add_widget(self.setup_screen)
+        # boshlanishiga LINEUP_LOCK_MIN daqiqa qolganda qulfni bazaga ham yozadi
+        Clock.schedule_interval(self.auto_lock_persist, 60)
 
     def first_screen(self):
         return "login"

@@ -6,7 +6,7 @@ Ma'lumotlar bazadagi tuzilishi (hammasi id bo'yicha alohida tugunlar):
   /meta      {setup_done, is_draft_open, turn}
   /groups    /<gid>  {id, name, captain_id, cap_login, cap_pass_hash}
   /players   /<pid>  {id, name, group, self_registered}
-  /matches   /<mid>  {id, home, away, hs, as, lineup_locked, motm_admin, goals[], subs[], cards[]}
+  /matches   /<mid>  {id, home, away, hs, as, kick, lineup_locked, motm_admin, goals[], subs[], cards[]}
   /lineups   /<mid>/<gid>  [pid, ...]
 
 Xotirada (ilova ichida) esa avvalgidek oddiy ro'yxatlar ishlatiladi: store.data
@@ -267,6 +267,7 @@ def from_remote(raw):
         m.setdefault("lineup_locked", False)
         m.setdefault("motm_admin", None)
         m.setdefault("stage", "group")     # "group" | "final"
+        m["kick"] = _i(m.get("kick"))      # boshlanish vaqti (epoch sekund) yoki None
         m["grp"] = _i(m.get("grp"))        # guruh bosqichidagi guruh id si (>8 jamoa)
         if not isinstance(m.get("attendance"), list):
             m["attendance"] = []
